@@ -1,0 +1,2337 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>CHICXULUB — 66 Million Years Ago</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,500;0,600;1,500&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --ink: #07080c;
+      --paper: #e8e2d4;
+      --mute: #8a8476;
+      --ember: #ff6a2a;
+      --gold: #d4b483;
+      --line: rgba(232, 226, 212, 0.14);
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { width: 100%; height: 100%; overflow: hidden; background: var(--ink); color: var(--paper); }
+    canvas { display: block; }
+    #hud {
+      position: fixed; inset: 0; pointer-events: none; z-index: 10;
+      font-family: "IBM Plex Sans", system-ui, sans-serif;
+    }
+    .vignette {
+      position: absolute; inset: 0;
+      background: radial-gradient(ellipse at center, transparent 42%, rgba(0,0,0,0.55) 100%);
+      pointer-events: none;
+    }
+    .flash {
+      position: absolute; inset: 0;
+      background: rgba(255,236,210,0.55);
+      opacity: 0; mix-blend-mode: screen; pointer-events: none;
+    }
+    .heat {
+      position: absolute; inset: 0; opacity: 0; pointer-events: none;
+      background: transparent;
+    }
+    .letterbox {
+      position: absolute; left: 0; right: 0; height: 50vh; background: #000;
+      pointer-events: none; z-index: 20;
+      transition: height 1.65s cubic-bezier(0.76, 0.04, 0.18, 1);
+    }
+    .letterbox.top { top: 0; }
+    .letterbox.bot { bottom: 0; }
+    body.is-playing .letterbox { height: 6.5vh; }
+    body.is-open .letterbox { height: 0; transition-duration: 1.1s; }
+    .grain {
+      position: absolute; inset: 0; width: 100%; height: 100%;
+      pointer-events: none; opacity: 0.1;
+      mix-blend-mode: overlay; z-index: 11;
+      image-rendering: pixelated;
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .grain { opacity: 0.04; }
+      .letterbox { transition: none; }
+    }
+    header {
+      position: absolute; top: 28px; left: 32px; max-width: 420px;
+    }
+    .kicker {
+      font-family: "IBM Plex Mono", monospace; font-size: 10px; letter-spacing: 0.28em;
+      text-transform: uppercase; color: var(--gold); margin-bottom: 8px;
+    }
+    h1 {
+      font-family: "Cormorant Garamond", Georgia, serif; font-weight: 500;
+      font-size: clamp(36px, 4.4vw, 58px); line-height: 0.9; letter-spacing: -0.02em;
+    }
+    h1 em { font-style: italic; color: #c9c2b2; }
+    .lede { margin-top: 12px; color: var(--mute); font-size: 13px; max-width: 34ch; line-height: 1.5; }
+    .panel {
+      position: absolute; top: 28px; right: 28px; width: min(280px, calc(100vw - 48px));
+      border: 1px solid var(--line); background: rgba(7,8,12,0.46);
+      backdrop-filter: blur(14px); padding: 16px 18px 14px;
+      transition: width 0.28s ease, padding 0.28s ease, background 0.28s ease;
+    }
+    .panel-head {
+      display: flex; align-items: center; justify-content: space-between; gap: 12px;
+      margin: -4px 0 10px;
+    }
+    .panel-head .label { margin: 0; }
+    .pane-toggle {
+      pointer-events: auto; flex: 0 0 auto; width: 28px; height: 28px; padding: 0;
+      letter-spacing: 0; font-size: 14px; line-height: 1;
+    }
+    .panel-body { overflow: hidden; }
+    body.pane-min .panel {
+      width: auto; padding: 6px;
+      background: rgba(7,8,12,0.28);
+    }
+    body.pane-min .panel-head { margin: 0; }
+    body.pane-min .panel-head .label,
+    body.pane-min .panel-body { display: none; }
+    body.pane-min .pane-toggle { width: 36px; height: 36px; }
+    .row { display: flex; justify-content: space-between; gap: 16px; padding: 7px 0; border-bottom: 1px solid var(--line); }
+    .row:last-child { border-bottom: 0; }
+    .label { font-family: "IBM Plex Mono", monospace; font-size: 10px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--mute); }
+    .value { font-family: "IBM Plex Mono", monospace; font-size: 12px; color: var(--paper); text-align: right; }
+    .value.hot { color: var(--ember); }
+    .settings {
+      margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--line);
+    }
+    .settings .label { margin-bottom: 8px; display: block; }
+    select, .check {
+      pointer-events: auto; width: 100%; appearance: none;
+      background: rgba(232,226,212,0.06); color: var(--paper);
+      border: 1px solid var(--line); font-family: "IBM Plex Mono", monospace;
+      font-size: 11px; letter-spacing: 0.04em; padding: 8px 10px;
+    }
+    select { cursor: pointer; margin-bottom: 8px; }
+    .check {
+      display: flex; align-items: center; gap: 8px; cursor: pointer; width: auto;
+    }
+    .check input { accent-color: var(--ember); }
+    .cam-btns { display: flex; gap: 6px; margin-top: 8px; }
+    .cam-btns button {
+      flex: 1; padding: 8px 8px; font-size: 9px; letter-spacing: 0.12em;
+    }
+    footer {
+      position: absolute; left: 32px; right: 32px; bottom: 26px;
+      display: flex; align-items: flex-end; justify-content: space-between; gap: 20px;
+    }
+    .phase-block { max-width: 520px; }
+    .phase-name {
+      font-family: "Cormorant Garamond", Georgia, serif; font-size: 28px; font-weight: 500; line-height: 1;
+    }
+    .phase-copy { margin-top: 6px; color: var(--mute); font-size: 12.5px; line-height: 1.5; max-width: 52ch; }
+    .bar { margin-top: 14px; height: 2px; background: rgba(232,226,212,0.12); overflow: hidden; }
+    .bar > i { display: block; height: 100%; width: 0%; background: linear-gradient(90deg, #ff9a4a, #ff3b1f); }
+    button {
+      pointer-events: auto; cursor: pointer; border: 1px solid var(--gold);
+      background: transparent; color: var(--paper); font-family: "IBM Plex Mono", monospace;
+      font-size: 11px; letter-spacing: 0.2em; text-transform: uppercase; padding: 12px 18px;
+    }
+    button:hover { background: var(--paper); color: var(--ink); border-color: var(--paper); }
+    #hud header, #hud .panel, #hud footer {
+      opacity: 0; transform: translateY(10px);
+      transition: opacity 0.9s ease 0.55s, transform 0.9s ease 0.55s;
+    }
+    body.is-playing #hud header,
+    body.is-playing #hud .panel,
+    body.is-playing #hud footer {
+      opacity: 1; transform: none;
+    }
+    .gate {
+      position: absolute; inset: 0; z-index: 30;
+      display: flex; align-items: center; justify-content: center;
+      pointer-events: auto;
+      transition: opacity 0.7s ease 0.15s, visibility 0.7s ease 0.15s;
+    }
+    .gate-inner { text-align: center; max-width: 36rem; padding: 0 24px; }
+    .gate .kicker { margin-bottom: 14px; }
+    .gate h2 {
+      font-family: "Cormorant Garamond", Georgia, serif; font-weight: 500;
+      font-size: clamp(42px, 7vw, 86px); line-height: 0.88; letter-spacing: -0.03em;
+    }
+    .gate h2 em { font-style: italic; color: #c9c2b2; }
+    .gate p {
+      margin: 18px auto 28px; color: var(--mute); font-size: 14px;
+      line-height: 1.55; max-width: 38ch;
+    }
+    .gate button {
+      min-width: 220px; padding: 16px 28px; font-size: 12px; letter-spacing: 0.28em;
+      background: var(--paper); color: var(--ink); border-color: var(--paper);
+    }
+    .gate button:hover { background: transparent; color: var(--paper); border-color: var(--gold); }
+    .gate button:disabled {
+      opacity: 0.28; cursor: wait; pointer-events: none;
+    }
+    .gate-load {
+      width: min(280px, 72vw); margin: 0 auto 22px;
+    }
+    .gate-load .load-meta {
+      display: flex; justify-content: space-between; align-items: baseline; gap: 16px;
+      margin-bottom: 8px;
+    }
+    .gate-load .load-meta .label { color: var(--gold); }
+    .gate-load .load-meta .value { font-size: 11px; color: var(--paper); }
+    .load-bar {
+      height: 2px; background: rgba(232,226,212,0.12); overflow: hidden;
+    }
+    .load-bar > i {
+      display: block; height: 100%; width: 4%;
+      background: linear-gradient(90deg, #d4b483, #ff6a2a);
+      transform-origin: left center;
+    }
+    body:not(.is-loading) .gate-load { opacity: 0.55; }
+    @media (prefers-reduced-motion: no-preference) {
+      .load-bar > i { transition: width 0.28s ease; }
+      .gate-load { transition: opacity 0.4s ease; }
+    }
+    body.is-playing .gate {
+      opacity: 0; visibility: hidden; pointer-events: none;
+    }
+    @media (max-width: 720px) {
+      header { top: 16px; left: 16px; }
+      .panel { top: auto; right: 16px; left: 16px; width: auto; bottom: 118px; }
+      body.pane-min .panel { left: auto; right: 16px; bottom: 118px; }
+      footer { left: 16px; right: 16px; bottom: 16px; flex-direction: column; align-items: stretch; }
+      h1 { font-size: 34px; }
+    }
+  </style>
+</head>
+<body class="is-loading">
+  <div id="hud">
+    <div class="vignette"></div>
+    <div class="flash" id="flash"></div>
+    <div class="heat" id="heat"></div>
+    <div class="letterbox top"></div>
+    <div class="letterbox bot"></div>
+    <canvas class="grain" id="grain"></canvas>
+    <div class="gate" id="gate">
+      <div class="gate-inner">
+        <div class="kicker">Yucatán · 66.043 Ma</div>
+        <h2>Chicxulub <em>impact</em></h2>
+        <p>A cinematic reconstruction of the asteroid that ended the Mesozoic. Press start to open the frame.</p>
+        <div class="gate-load" id="gate-load" role="status" aria-live="polite" aria-busy="true">
+          <div class="load-meta">
+            <span class="label" id="load-label">Preparing world</span>
+            <span class="value" id="load-pct">0%</span>
+          </div>
+          <div class="load-bar" aria-hidden="true"><i id="load-bar"></i></div>
+        </div>
+        <button id="start" type="button" disabled>Preparing…</button>
+      </div>
+    </div>
+    <header>
+      <div class="kicker">Yucatán · 66.043 Ma</div>
+      <h1>Chicxulub <em>impact</em></h1>
+      <p class="lede">The ten-kilometre asteroid that ended the Mesozoic and wintered the world.</p>
+    </header>
+    <aside class="panel" id="detail-pane">
+      <div class="panel-head">
+        <span class="label">Telemetry</span>
+        <button id="pane-toggle" class="pane-toggle" type="button" aria-expanded="true" aria-controls="detail-pane-body" title="Minimize detail pane">–</button>
+      </div>
+      <div class="panel-body" id="detail-pane-body">
+        <div class="row"><span class="label">Phase</span><span class="value hot" id="m-phase">Approach</span></div>
+        <div class="row"><span class="label">Speed</span><span class="value" id="m-speed">20.0 km/s</span></div>
+        <div class="row"><span class="label">Diameter</span><span class="value" id="m-size">10 km</span></div>
+        <div class="row"><span class="label">Energy</span><span class="value" id="m-energy">1×10⁸ Mt</span></div>
+        <div class="row"><span class="label">Altitude</span><span class="value" id="m-alt">1.2×10⁶ km</span></div>
+        <div class="row"><span class="label">Dust cover</span><span class="value" id="m-dust">0%</span></div>
+        <div class="settings">
+          <span class="label">Impact camera</span>
+          <select id="cam-mode">
+            <option value="cinematic">Cinematic follow</option>
+            <option value="impact">Best impact angle</option>
+            <option value="close">Close Yucatán</option>
+            <option value="wide">Wide Earth</option>
+            <option value="free">Free orbit</option>
+          </select>
+          <label class="check"><input type="checkbox" id="cam-lock" checked /> Lock to impact site</label>
+          <div class="cam-btns">
+            <button id="cam-set" type="button">Set view</button>
+            <button id="cam-reset" type="button">Reset cam</button>
+          </div>
+        </div>
+      </div>
+    </aside>
+    <footer>
+      <div class="phase-block">
+        <div class="phase-name" id="phase-name">Terminal approach</div>
+        <p class="phase-copy" id="phase-copy">A carbonaceous chondrite falls out of the late Cretaceous sky toward a shallow tropical sea.</p>
+        <div class="bar"><i id="progress"></i></div>
+      </div>
+      <button id="replay" type="button">Restart / Replay</button>
+    </footer>
+  </div>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+  <script>
+    (function () {
+      const EARTH_R = 2.4;
+      // Readable from orbit, but small enough that the wound can swallow it.
+      const ASTEROID_R = 0.052;
+      const CRATER_R = 0.42;
+      const IMPACT_LAT = 21.4 * Math.PI / 180;
+      const IMPACT_LON = -89.5 * Math.PI / 180;
+
+      const PHASES = [
+        { id: 'approach', name: 'Terminal approach', hud: 'Approach',
+          copy: 'A ten-kilometre carbonaceous chondrite falls out of the late Cretaceous sky toward a shallow tropical sea.',
+          t0: 0, t1: 9.2 },
+        { id: 'entry', name: 'Atmospheric entry', hud: 'Atmospheric Entry',
+          copy: 'Ram pressure strips the surface into a fireball. Speed holds near 20 km/s as the Yucatán fills the sky.',
+          t0: 9.2, t1: 12.4 },
+        { id: 'impact', name: 'Impact flash', hud: 'Impact',
+          copy: 'Contact. A 100-million-megaton pulse excavates a crater 180 km across and briefly outshines the Sun.',
+          t0: 12.4, t1: 14.2 },
+        { id: 'shock', name: 'Global shockwave', hud: 'Shockwave',
+          copy: 'A hypersonic ring races over Pangea’s broken coasts. Forests ignite. Tsunamis climb every nearby shore.',
+          t0: 14.2, t1: 20.5 },
+        { id: 'winter', name: 'Nuclear winter', hud: 'Global Winter',
+          copy: 'Soot and pulverised bedrock veil the planet. Sunlight collapses. The long night of the K–Pg extinction begins.',
+          t0: 20.5, t1: 34 }
+      ];
+
+      const hud = {
+        phase: document.getElementById('m-phase'),
+        speed: document.getElementById('m-speed'),
+        alt: document.getElementById('m-alt'),
+        dust: document.getElementById('m-dust'),
+        name: document.getElementById('phase-name'),
+        copy: document.getElementById('phase-copy'),
+        progress: document.getElementById('progress'),
+        flash: document.getElementById('flash'),
+        heat: document.getElementById('heat')
+      };
+
+      const startBtn = document.getElementById('start');
+      const loadLabel = document.getElementById('load-label');
+      const loadPct = document.getElementById('load-pct');
+      const loadBar = document.getElementById('load-bar');
+      const loadWrap = document.getElementById('gate-load');
+      let worldReady = false;
+
+      function setLoad(pct, label) {
+        const p = Math.max(0, Math.min(100, pct));
+        if (loadLabel) loadLabel.textContent = label;
+        if (loadPct) loadPct.textContent = Math.round(p) + '%';
+        if (loadBar) loadBar.style.width = p.toFixed(1) + '%';
+        if (loadWrap) loadWrap.setAttribute('aria-label', label + ', ' + Math.round(p) + ' percent');
+      }
+      function yieldFrame() {
+        return new Promise(function (resolve) {
+          requestAnimationFrame(function () { resolve(); });
+        });
+      }
+      function placeholderTex(fill) {
+        const c = document.createElement('canvas');
+        c.width = 4; c.height = 2;
+        const ctx = c.getContext('2d');
+        ctx.fillStyle = fill || '#081018';
+        ctx.fillRect(0, 0, 4, 2);
+        const t = new THREE.CanvasTexture(c);
+        t.encoding = THREE.sRGBEncoding;
+        return t;
+      }
+      setLoad(3, 'Opening the frame');
+
+      const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      const grain = document.getElementById('grain');
+      const gctx = grain.getContext('2d', { alpha: true });
+      let grainImg = null;
+      function sizeGrain() {
+        // tiny tiled noise — stretched full-screen via CSS, cheap to repaint
+        grain.width = 160;
+        grain.height = 90;
+        grainImg = gctx.createImageData(grain.width, grain.height);
+      }
+      sizeGrain();
+      function paintGrain() {
+        if (reduceMotion) return;
+        const d = grainImg.data;
+        for (let i = 0; i < d.length; i += 4) {
+          const n = 100 + ((Math.random() * 70) | 0);
+          d[i] = d[i + 1] = d[i + 2] = n;
+          d[i + 3] = 34 + ((Math.random() * 22) | 0);
+        }
+        gctx.putImageData(grainImg, 0, 0);
+      }
+      paintGrain();
+
+      const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+      // Cap DPR: retina * heavy transparent passes tanks frame time
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      // Soft globe lighting without real-time shadow maps (big fill-rate saver)
+      renderer.shadowMap.enabled = false;
+      renderer.outputEncoding = THREE.sRGBEncoding;
+      renderer.toneMapping = THREE.ACESFilmicToneMapping;
+      renderer.toneMappingExposure = 1.05;
+      document.body.prepend(renderer.domElement);
+
+      const scene = new THREE.Scene();
+      scene.background = new THREE.Color(0x020308);
+      scene.fog = new THREE.FogExp2(0x020308, 0.0085);
+
+      const camera = new THREE.PerspectiveCamera(42, window.innerWidth / window.innerHeight, 0.08, 400);
+      camera.position.set(0.6, 1.8, 8.4);
+
+      const controls = new THREE.OrbitControls(camera, renderer.domElement);
+      controls.enableDamping = true;
+      controls.dampingFactor = 0.06;
+      controls.minDistance = 3.4;
+      controls.maxDistance = 28;
+      controls.target.set(0, 0, 0);
+      controls.autoRotate = true;
+      controls.autoRotateSpeed = 0.18;
+
+      const sun = new THREE.DirectionalLight(0xfff2d8, 1.85);
+      sun.position.set(-14, 7.5, 10);
+      scene.add(sun);
+      const fill = new THREE.DirectionalLight(0x6a8cff, 0.18);
+      fill.position.set(10, -4, -8);
+      scene.add(fill);
+      const ambient = new THREE.AmbientLight(0x0c1224, 0.16);
+      scene.add(ambient);
+      const hemi = new THREE.HemisphereLight(0x1a3a6a, 0x040308, 0.32);
+      scene.add(hemi);
+      const sunCore = new THREE.Mesh(
+        new THREE.SphereGeometry(0.7, 28, 28),
+        new THREE.MeshBasicMaterial({ color: 0xfff0c4 })
+      );
+      sunCore.position.copy(sun.position).multiplyScalar(1.55);
+      scene.add(sunCore);
+      const sunGlow = new THREE.Mesh(
+        new THREE.SphereGeometry(1.8, 28, 28),
+        new THREE.MeshBasicMaterial({ color: 0xffc878, transparent: true, opacity: 0.12, depthWrite: false, blending: THREE.AdditiveBlending })
+      );
+      sunGlow.position.copy(sunCore.position);
+      scene.add(sunGlow);
+
+      function makeStars(count, radius, size, color) {
+        const pos = new Float32Array(count * 3);
+        for (let i = 0; i < count; i++) {
+          const r = radius * (0.55 + Math.random() * 0.45);
+          const u = Math.random();
+          const v = Math.random();
+          const theta = 2 * Math.PI * u;
+          const phi = Math.acos(2 * v - 1);
+          pos[i * 3] = r * Math.sin(phi) * Math.cos(theta);
+          pos[i * 3 + 1] = r * Math.sin(phi) * Math.sin(theta);
+          pos[i * 3 + 2] = r * Math.cos(phi);
+        }
+        const g = new THREE.BufferGeometry();
+        g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+        return new THREE.Points(g, new THREE.PointsMaterial({
+          color, size, sizeAttenuation: true, transparent: true, opacity: 0.9, depthWrite: false
+        }));
+      }
+      scene.add(makeStars(1400, 90, 0.1, 0xffffff));
+      scene.add(makeStars(500, 70, 0.18, 0xc9ddff));
+
+      function latLonToVec(lat, lon, r) {
+        const cl = Math.cos(lat);
+        return new THREE.Vector3(r * cl * Math.cos(lon), r * Math.sin(lat), r * cl * Math.sin(lon));
+      }
+      const impactPoint = latLonToVec(IMPACT_LAT, IMPACT_LON, EARTH_R);
+      const impactNormal = impactPoint.clone().normalize();
+
+      function hash2(x, y) {
+        const s = Math.sin(x * 127.1 + y * 311.7) * 43758.5453;
+        return s - Math.floor(s);
+      }
+      function noise2(x, y) {
+        const xi = Math.floor(x), yi = Math.floor(y);
+        const xf = x - xi, yf = y - yi;
+        const u = xf * xf * (3 - 2 * xf), v = yf * yf * (3 - 2 * yf);
+        const n00 = hash2(xi, yi), n10 = hash2(xi + 1, yi);
+        const n01 = hash2(xi, yi + 1), n11 = hash2(xi + 1, yi + 1);
+        return n00 * (1 - u) * (1 - v) + n10 * u * (1 - v) + n01 * (1 - u) * v + n11 * u * v;
+      }
+      function fbm(x, y) {
+        return noise2(x, y) * 0.46 + noise2(x * 2.07, y * 2.07) * 0.24 + noise2(x * 4.13, y * 4.13) * 0.14
+          + noise2(x * 8.3, y * 8.3) * 0.09 + noise2(x * 16.7, y * 16.7) * 0.05 + noise2(x * 33, y * 33) * 0.02;
+      }
+      function ridge(x, y) {
+        return 1 - Math.abs(fbm(x, y) * 2 - 1);
+      }
+
+      function blobField(nx, ny, blobs) {
+        let d = 0;
+        for (let i = 0; i < blobs.length; i++) {
+          const b = blobs[i];
+          const dx = (nx - b[0]) / b[2];
+          const dy = (ny - b[1]) / b[3];
+          const rot = b[4] || 0;
+          const c = Math.cos(rot), s = Math.sin(rot);
+          const rx = dx * c - dy * s;
+          const ry = dx * s + dy * c;
+          // smooth falloff — avoids hard oval "box" continents
+          const rr = rx * rx + ry * ry;
+          const fall = Math.max(0, 1 - rr);
+          if (fall > 0) d = Math.max(d, Math.pow(fall, 1.35) * (b[5] || 1));
+        }
+        return d;
+      }
+
+      const CRET_BLOBS = [
+        [0.18, 0.34, 0.13, 0.10, 0.4, 1], [0.22, 0.38, 0.09, 0.08, -0.3, 0.9],
+        [0.14, 0.42, 0.07, 0.09, 0.6, 0.85], [0.27, 0.32, 0.08, 0.07, 0.2, 0.8],
+        [0.20, 0.48, 0.05, 0.07, 0.1, 0.7], [0.16, 0.36, 0.05, 0.045, 1.1, 0.55],
+        [0.28, 0.56, 0.07, 0.11, 0.5, 1], [0.32, 0.62, 0.06, 0.10, -0.2, 0.9],
+        [0.25, 0.64, 0.05, 0.08, 0.3, 0.75], [0.30, 0.52, 0.04, 0.05, -0.8, 0.5],
+        [0.48, 0.42, 0.11, 0.16, 0.15, 1], [0.52, 0.50, 0.09, 0.12, -0.25, 0.95],
+        [0.44, 0.36, 0.08, 0.08, 0.4, 0.8], [0.55, 0.38, 0.07, 0.09, 0.1, 0.75],
+        [0.50, 0.34, 0.045, 0.055, 0.9, 0.55],
+        [0.62, 0.32, 0.16, 0.09, 0.05, 1], [0.70, 0.30, 0.12, 0.08, -0.2, 0.9],
+        [0.78, 0.34, 0.10, 0.08, 0.3, 0.85], [0.66, 0.38, 0.09, 0.07, 0.1, 0.7],
+        [0.58, 0.28, 0.07, 0.06, 0.4, 0.65], [0.84, 0.38, 0.07, 0.09, -0.15, 0.7],
+        [0.64, 0.52, 0.05, 0.06, 0.8, 0.85], [0.74, 0.44, 0.04, 0.06, -0.5, 0.45],
+        [0.78, 0.68, 0.09, 0.07, 0.2, 0.95], [0.84, 0.72, 0.07, 0.06, -0.3, 0.8],
+        [0.48, 0.86, 0.22, 0.08, 0.05, 1], [0.62, 0.84, 0.12, 0.06, -0.1, 0.8],
+        [0.18, 0.18, 0.16, 0.07, 0, 0.55], [0.72, 0.16, 0.14, 0.06, 0.1, 0.5]
+      ];
+
+      function warpUV(nx, ny, scale, amount) {
+        const wx = (fbm(nx * scale + 11.2, ny * scale + 4.7) - 0.5) * amount;
+        const wy = (fbm(nx * scale - 3.8, ny * scale + 19.1) - 0.5) * amount;
+        return [nx + wx, ny + wy];
+      }
+
+      function landMask(nx, ny) {
+        // two-scale warp: large bays + high-frequency fjords/inlets so coasts aren't boxes
+        const w1 = warpUV(nx, ny, 3.2, 0.062);
+        const w2 = warpUV(w1[0], w1[1], 11.5, 0.018);
+        const base = blobField(w2[0], w2[1], CRET_BLOBS);
+        const n = fbm(w2[0] * 9.4, w2[1] * 17.2);
+        const nMid = fbm(w2[0] * 28 + 2.4, w2[1] * 48 + 1.1);
+        const nFine = noise2(w2[0] * 86, w2[1] * 140);
+        const nJag = noise2(w2[0] * 190 + 7.3, w2[1] * 310 + 4.8);
+        return base + (n - 0.5) * 0.46 + (nMid - 0.5) * 0.16 + (nFine - 0.5) * 0.07 + (nJag - 0.5) * 0.028;
+      }
+
+      function mountainField(nx, ny) {
+        const w = warpUV(nx, ny, 5.2, 0.028);
+        const a = ridge(w[0] * 10.5 + 1.2, w[1] * 17.5);
+        const b = ridge(w[0] * 20.0 - 4.1, w[1] * 29.0 + 2.4);
+        return Math.pow(a * 0.62 + b * 0.38, 1.32);
+      }
+
+      // Build elevation once at color resolution, sample for other maps — huge speedup
+      const MAP_W = 2560, MAP_H = 1280;
+      const elevField = new Float32Array(MAP_W * MAP_H);
+      const mtnField = new Float32Array(MAP_W * MAP_H);
+      async function bakeElevation() {
+        const step = 64;
+        for (let y0 = 0; y0 < MAP_H; y0 += step) {
+          const y1 = Math.min(MAP_H, y0 + step);
+          for (let y = y0; y < y1; y++) {
+            const ny = y / MAP_H;
+            for (let x = 0; x < MAP_W; x++) {
+              const nx = x / MAP_W;
+              const i = y * MAP_W + x;
+              elevField[i] = landMask(nx, ny);
+              mtnField[i] = elevField[i] > 0.34 ? mountainField(nx, ny) : 0;
+            }
+          }
+          setLoad(8 + (y1 / MAP_H) * 36, 'Raising continents');
+          await yieldFrame();
+        }
+      }
+
+      function sampleField(field, w, h, nx, ny) {
+        const x = Math.max(0, Math.min(w - 1.001, nx * w));
+        const y = Math.max(0, Math.min(h - 1.001, ny * h));
+        const x0 = x | 0, y0 = y | 0;
+        const x1 = Math.min(w - 1, x0 + 1), y1 = Math.min(h - 1, y0 + 1);
+        const tx = x - x0, ty = y - y0;
+        const i00 = y0 * w + x0, i10 = y0 * w + x1, i01 = y1 * w + x0, i11 = y1 * w + x1;
+        const a = field[i00] + (field[i10] - field[i00]) * tx;
+        const b = field[i01] + (field[i11] - field[i01]) * tx;
+        return a + (b - a) * ty;
+      }
+
+      function coastSample(nx, ny) {
+        const elev = sampleField(elevField, MAP_W, MAP_H, nx, ny);
+        return elev
+          + (noise2(nx * 150, ny * 260) - 0.5) * 0.038
+          + (noise2(nx * 340 + 5.1, ny * 560 + 2.4) - 0.5) * 0.016;
+      }
+
+      function paintCretaceous(ctx, w, h) {
+        const img = ctx.createImageData(w, h);
+        const d = img.data;
+        for (let y = 0; y < h; y++) {
+          const ny = y / h;
+          const lat = Math.abs(ny * 2 - 1);
+          for (let x = 0; x < w; x++) {
+            const nx = x / w;
+            const i = (y * w + x) * 4;
+            const elev = sampleField(elevField, MAP_W, MAP_H, nx, ny);
+            const mountains = sampleField(mtnField, MAP_W, MAP_H, nx, ny);
+            const n = fbm(nx * 20, ny * 36);
+            const n2 = fbm(nx * 48 + 3.1, ny * 80 + 1.7);
+            const n3 = fbm(nx * 96, ny * 160);
+            const grain = noise2(nx * 240 + 1.7, ny * 400 + 0.4);
+            const clump = noise2(nx * 72 + 4.2, ny * 118 + 2.8);
+            const coast = coastSample(nx, ny);
+            let r, g, b;
+            if (coast > 0.40) {
+              const hgt = Math.max(0, (elev - 0.40) / 0.75);
+              const arid = n * (1 - lat * 0.85);
+              const peak = mountains * (0.55 + hgt * 0.9);
+              const forest = n2 * 0.62 + n3 * 0.38;
+              if (lat > 0.82 || (lat > 0.72 && (hgt > 0.38 || peak > 0.72))) {
+                const crevasse = Math.abs(n3 - 0.5);
+                r = 222 + n * 18 + grain * 10;
+                g = 228 + n * 12 + grain * 8;
+                b = 234 + n2 * 10;
+                if (crevasse < 0.07) {
+                  const c = 1 - crevasse / 0.07;
+                  r -= c * 20; g -= c * 12; b -= c * 6;
+                }
+              } else if (peak > 0.58 || hgt > 0.54) {
+                const band = Math.abs(Math.sin((hgt + n2 * 0.16) * 18.0));
+                r = 84 + n * 34 + peak * 78 + band * 18 + grain * 10;
+                g = 70 + n * 20 + peak * 36 + band * 8;
+                b = 56 + n * 14 + peak * 18;
+                if (peak > 0.76 && lat > 0.32) {
+                  const snow = (peak - 0.76) / 0.24;
+                  r += (216 + n * 14 - r) * snow;
+                  g += (220 + n * 10 - g) * snow;
+                  b += (224 + n2 * 8 - b) * snow;
+                }
+              } else if (arid > 0.58 && lat < 0.46 && forest < 0.58) {
+                const dune = Math.abs(Math.sin(nx * 88 + n * 8 + ny * 14));
+                r = 184 + n * 30 + n3 * 8 + dune * 16 + grain * 8;
+                g = 146 + n * 18 + dune * 8;
+                b = 72 + n * 12 + grain * 6;
+              } else if (forest > 0.42 && lat < 0.72 && hgt < 0.50) {
+                const deep = (forest - 0.42) / 0.58;
+                const gap = clump > 0.7 ? (clump - 0.7) / 0.3 : 0;
+                r = 22 + n * 12 + (1 - deep) * 28 + gap * 34 + grain * 8;
+                g = 78 + n * 22 + deep * 52 + n3 * 12 - gap * 16 + grain * 6;
+                b = 28 + n * 8 + n2 * 6 + gap * 8;
+              } else if (hgt > 0.20) {
+                r = 70 + n * 22 + n3 * 8 + grain * 8;
+                g = 116 + n * 22 + n2 * 10 + grain * 6;
+                b = 42 + n * 10;
+              } else {
+                r = 36 + n * 16 + clump * 10;
+                g = 116 + n * 22 + n2 * 12 + grain * 8;
+                b = 48 + n * 10;
+              }
+              if (elev < 0.472) {
+                const t = (0.472 - elev) / 0.072;
+                if (t > 0.52) {
+                  const beach = (t - 0.52) / 0.48;
+                  r += (214 + n * 12 - r) * beach;
+                  g += (186 + n * 10 - g) * beach;
+                  b += (118 + n2 * 8 - b) * beach;
+                } else {
+                  const plain = t / 0.52;
+                  r += (96 + n * 14 - r) * plain * 0.5;
+                  g += (130 + n * 10 - g) * plain * 0.32;
+                  b += (68 + n2 * 8 - b) * plain * 0.22;
+                }
+              }
+              const river = Math.abs(fbm(nx * 12 + 1.4, ny * 20 + 2.2) - 0.5);
+              if (river < 0.017 && hgt < 0.52 && elev > 0.418) {
+                const wet = 1 - river / 0.017;
+                const body = wet * wet;
+                const bank = wet * (1 - body);
+                r += (14 - r) * body + (30 - r) * bank * 0.42;
+                g += (76 - g) * body + (110 - g) * bank * 0.32;
+                b += (108 - b) * body + (50 - b) * bank * 0.18;
+              }
+              r += (n3 - 0.5) * 10 + (grain - 0.5) * 8;
+              g += (n2 - 0.5) * 8 + (grain - 0.5) * 6;
+              b += (n - 0.5) * 5;
+            } else {
+              const depth = Math.max(0, 0.40 - elev);
+              if (elev > 0.348) {
+                const sh = (elev - 0.348) / 0.052;
+                r = 18 + n * 10 + sh * 38 + grain * sh * 16;
+                g = 130 + n * 14 + sh * 30 + grain * sh * 8;
+                b = 136 + n2 * 10 + sh * 24;
+              } else if (lat > 0.84) {
+                r = 176 + n * 26 + grain * 10;
+                g = 202 + n * 16;
+                b = 216 + n2 * 10;
+              } else {
+                const current = Math.abs(Math.sin(ny * 22 + n * 6 + nx * 8));
+                r = 3 + depth * 8 + current * 4;
+                g = 36 + (1 - depth) * 72 + n * 10 + n2 * 8 + current * 8;
+                b = 86 + (1 - depth) * 64 + n2 * 10 + current * 6;
+              }
+            }
+            d[i] = r < 0 ? 0 : r > 255 ? 255 : r;
+            d[i + 1] = g < 0 ? 0 : g > 255 ? 255 : g;
+            d[i + 2] = b < 0 ? 0 : b > 255 ? 255 : b;
+            d[i + 3] = 255;
+          }
+        }
+        ctx.putImageData(img, 0, 0);
+      }
+
+      function canvasTex(draw, w, h) {
+        const c = document.createElement('canvas');
+        c.width = w; c.height = h;
+        draw(c.getContext('2d'), w, h);
+        const t = new THREE.CanvasTexture(c);
+        t.encoding = THREE.sRGBEncoding;
+        t.anisotropy = 4;
+        t.generateMipmaps = true;
+        return t;
+      }
+
+      function paintBump(ctx, w, h) {
+        const img = ctx.createImageData(w, h);
+        const d = img.data;
+        for (let y = 0; y < h; y++) {
+          const ny = y / h;
+          for (let x = 0; x < w; x++) {
+            const nx = x / w;
+            const elev = sampleField(elevField, MAP_W, MAP_H, nx, ny);
+            const mountains = sampleField(mtnField, MAP_W, MAP_H, nx, ny);
+            const n = fbm(nx * 26, ny * 48);
+            const grain = noise2(nx * 220 + 3.1, ny * 360 + 1.4);
+            const ridge = Math.abs(Math.sin((elev + mountains * 0.35 + n * 0.08) * 22.0));
+            let v;
+            if (elev > 0.40) {
+              const hgt = (elev - 0.40) / 0.75;
+              v = 102 + hgt * 168 + mountains * 92 + n * 18 + grain * 14 + ridge * mountains * 22;
+              if (elev < 0.47) v += (0.47 - elev) * 90;
+            } else {
+              const swell = Math.abs(Math.sin(ny * 18 + n * 5 + nx * 7));
+              v = 28 + n * 10 + Math.max(0, elev) * 22 + swell * 8 + grain * 5;
+              if (elev > 0.34) v += (elev - 0.34) * 80;
+            }
+            if (elev > 0.418) {
+              const river = Math.abs(fbm(nx * 12 + 1.4, ny * 20 + 2.2) - 0.5);
+              if (river < 0.017) v -= (1 - river / 0.017) * 42;
+            }
+            const i = (y * w + x) * 4;
+            v = v < 0 ? 0 : v > 255 ? 255 : v;
+            d[i] = d[i + 1] = d[i + 2] = v;
+            d[i + 3] = 255;
+          }
+        }
+        ctx.putImageData(img, 0, 0);
+      }
+
+      function paintSpec(ctx, w, h) {
+        const img = ctx.createImageData(w, h);
+        const d = img.data;
+        for (let y = 0; y < h; y++) {
+          const ny = y / h;
+          for (let x = 0; x < w; x++) {
+            const nx = x / w;
+            const elev = coastSample(nx, ny);
+            const mountains = sampleField(mtnField, MAP_W, MAP_H, nx, ny);
+            const i = (y * w + x) * 4;
+            let v;
+            if (elev < 0.40) {
+              const depth = Math.max(0, 0.40 - elev);
+              v = 118 + depth * 70;
+            } else {
+              const hgt = (elev - 0.40) / 0.75;
+              v = 228 - mountains * 36 - hgt * 22;
+              if (elev < 0.46) v -= (0.46 - elev) * 90;
+            }
+            d[i] = d[i + 1] = d[i + 2] = v < 90 ? 90 : v > 255 ? 255 : v;
+            d[i + 3] = 255;
+          }
+        }
+        ctx.putImageData(img, 0, 0);
+      }
+
+      function paintWater(ctx, w, h) {
+        const img = ctx.createImageData(w, h);
+        const d = img.data;
+        for (let y = 0; y < h; y++) {
+          const ny = y / h;
+          for (let x = 0; x < w; x++) {
+            const elev = coastSample(x / w, ny);
+            const i = (y * w + x) * 4;
+            let v = 0;
+            if (elev < 0.40) {
+              const depth = Math.max(0, 0.40 - elev);
+              v = 160 + depth * 90;
+            } else if (elev < 0.418) {
+              v = (0.418 - elev) / 0.018 * 70;
+            }
+            d[i] = d[i + 1] = d[i + 2] = v > 255 ? 255 : v;
+            d[i + 3] = 255;
+          }
+        }
+        ctx.putImageData(img, 0, 0);
+      }
+
+      function paintClouds(ctx, w, h, dens, scale) {
+        const img = ctx.createImageData(w, h);
+        const d = img.data;
+        const s = scale || 1;
+        for (let y = 0; y < h; y++) {
+          for (let x = 0; x < w; x++) {
+            const nx = x / w, ny = y / h;
+            const bands = fbm(nx * 8 * s, ny * 18 * s);
+            const swirl = fbm(nx * 20 * s + 4, ny * 7 * s);
+            const clumps = fbm(nx * 32 * s + 9, ny * 26 * s);
+            const lat = Math.abs(ny * 2 - 1);
+            const belt = 0.18 + Math.cos(lat * Math.PI * 1.6) * 0.12;
+            const v = Math.max(0, bands * 0.5 + swirl * 0.32 + clumps * 0.28 - (dens || 0.28) + belt);
+            const a = Math.min(255, v * 560);
+            const i = (y * w + x) * 4;
+            d[i] = d[i + 1] = d[i + 2] = 255;
+            d[i + 3] = a;
+          }
+        }
+        ctx.putImageData(img, 0, 0);
+      }
+
+      function paintFog(ctx, w, h) {
+        const img = ctx.createImageData(w, h);
+        const d = img.data;
+        for (let y = 0; y < h; y++) {
+          for (let x = 0; x < w; x++) {
+            const nx = x / w, ny = y / h;
+            const haze = fbm(nx * 5, ny * 9);
+            const lat = Math.abs(ny * 2 - 1);
+            const v = Math.max(0, haze * 0.7 + (1 - lat) * 0.18 - 0.22);
+            const i = (y * w + x) * 4;
+            d[i] = 210; d[i + 1] = 220; d[i + 2] = 230;
+            d[i + 3] = Math.min(255, v * 210);
+          }
+        }
+        ctx.putImageData(img, 0, 0);
+      }
+
+      function paintNight(ctx, w, h) {
+        const img = ctx.createImageData(w, h);
+        const d = img.data;
+        for (let y = 0; y < h; y++) {
+          const ny = y / h;
+          for (let x = 0; x < w; x++) {
+            const nx = x / w;
+            const elev = coastSample(nx, ny);
+            const i = (y * w + x) * 4;
+            let r = 0, g = 0, b = 0, a = 0;
+            if (elev > 0.41 && Math.abs(ny * 2 - 1) < 0.72) {
+              const city = fbm(nx * 48 + 2, ny * 80 + 5);
+              const dense = fbm(nx * 100, ny * 150);
+              if (city > 0.64) {
+                const glow = (city - 0.64) * 2.5 * dense;
+                r = 255; g = 180 + dense * 40; b = 90;
+                a = Math.min(255, glow * 220);
+              }
+            }
+            d[i] = r; d[i + 1] = g; d[i + 2] = b; d[i + 3] = a;
+          }
+        }
+        ctx.putImageData(img, 0, 0);
+      }
+
+      let earthMap = placeholderTex('#16324a');
+      let bumpMap = placeholderTex('#404040');
+      let specMap = placeholderTex('#202020');
+      let waterMap = placeholderTex('#c8c8c8');
+      let nightMap = placeholderTex('#000000');
+      const earthGroup = new THREE.Group();
+      scene.add(earthGroup);
+
+      const earth = new THREE.Mesh(
+        new THREE.SphereGeometry(EARTH_R, 160, 160),
+        new THREE.MeshStandardMaterial({
+          map: earthMap, bumpMap, bumpScale: 0.22, roughnessMap: specMap,
+          roughness: 0.78, metalness: 0.05
+        })
+      );
+      earthGroup.add(earth);
+
+      const oceanGlint = new THREE.Mesh(
+        new THREE.SphereGeometry(EARTH_R + 0.005, 112, 112),
+        new THREE.MeshStandardMaterial({
+          color: 0x073454, roughness: 0.62, metalness: 0.08,
+          transparent: true, opacity: 0.18, depthWrite: false,
+          alphaMap: waterMap
+        })
+      );
+      earthGroup.add(oceanGlint);
+
+      const nights = new THREE.Mesh(
+        new THREE.SphereGeometry(EARTH_R + 0.004, 112, 112),
+        new THREE.MeshBasicMaterial({
+          map: nightMap, transparent: true, opacity: 0.85, depthWrite: false,
+          blending: THREE.AdditiveBlending
+        })
+      );
+      earthGroup.add(nights);
+
+      function paintCraterMap(ctx, w, h, mode) {
+        const img = ctx.createImageData(w, h);
+        const d = img.data;
+        const cx = w * 0.5, cy = h * 0.5, maxR = w * 0.5;
+        for (let y = 0; y < h; y++) {
+          for (let x = 0; x < w; x++) {
+            const dx = (x - cx) / maxR, dy = (y - cy) / maxR;
+            const r = Math.sqrt(dx * dx + dy * dy);
+            const ang = Math.atan2(dy, dx);
+            const i = (y * w + x) * 4;
+            const n = fbm(dx * 7.4 + 2.1, dy * 7.4 + 1.4);
+            const n2 = fbm(dx * 18 + 4.2, dy * 18 + 0.7);
+            const n3 = fbm(dx * 42, dy * 42);
+            const ray = Math.pow(Math.max(0, Math.cos(ang * 5.0 + n * 2.4)), 10);
+            const crack = Math.abs(Math.sin(ang * 9.0 + n2 * 6.0)) * Math.abs(Math.sin(r * 22 + n3 * 8));
+            let R = 0, G = 0, B = 0, A = 255;
+            const rimFade = r > 0.58 ? Math.max(0, 1 - (r - 0.58) / 0.40) : 1;
+            if (mode === 'emit') {
+              const hot = Math.max(0, 1 - r / 0.46);
+              const vein = crack > 0.72 && r < 0.7 ? 0.85 : 0;
+              R = (hot * 255 + vein * 200) * (0.75 + n * 0.25);
+              G = (hot * hot * 160 + vein * 70);
+              B = hot * hot * hot * 70;
+              A = Math.min(255, (hot * 240 + vein * 180) * rimFade);
+            } else {
+              if (r < 0.2) {
+                R = 210; G = 118 - r * 90; B = 42 - r * 80;
+              } else if (r < 0.42) {
+                const t = (r - 0.2) / 0.22;
+                R = 168 - t * 70; G = 72 - t * 32; B = 28 - t * 8;
+              } else if (r < 0.7) {
+                R = 38 + n * 22 + n3 * 10; G = 22 + n * 12; B = 16 + n * 6;
+              } else {
+                R = 52 + n * 22 - ray * 12; G = 36 + n * 14; B = 24 + n * 8;
+              }
+              if (crack > 0.8 && r < 0.68) { R = 210; G = 110; B = 36; }
+              A = rimFade * 255;
+            }
+            d[i] = R; d[i + 1] = G; d[i + 2] = B; d[i + 3] = A;
+          }
+        }
+        ctx.putImageData(img, 0, 0);
+      }
+      const craterMap = canvasTex((ctx, w, h) => paintCraterMap(ctx, w, h, 'albedo'), 384, 384);
+      const craterEmit = canvasTex((ctx, w, h) => paintCraterMap(ctx, w, h, 'emit'), 384, 384);
+
+      const craterGroup = new THREE.Group();
+      craterGroup.position.copy(impactPoint.clone().multiplyScalar(1.0018));
+      craterGroup.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), impactNormal);
+      earthGroup.add(craterGroup);
+      const craterGeo = new THREE.CircleGeometry(CRATER_R, 96);
+      const craterPos = craterGeo.attributes.position;
+      const craterCol = new Float32Array(craterPos.count * 3);
+      for (let i = 0; i < craterPos.count; i++) {
+        const x = craterPos.getX(i), y = craterPos.getY(i);
+        const r = Math.sqrt(x * x + y * y);
+        const ang = Math.atan2(y, x);
+        const n = Math.sin(ang * 5.0 + 0.4) * 0.22 + Math.sin(ang * 11.0 + 1.7) * 0.12
+          + Math.sin(x * 38 + y * 27) * 0.1 + Math.sin(x * 71 - y * 53) * 0.05;
+        const rn = r / CRATER_R;
+        let z = 0;
+        if (rn < 0.16) {
+          z = -0.055 * (1 - rn / 0.16) * (1.08 + n * 0.12);
+        } else if (rn < 0.3) {
+          const pk = (rn - 0.16) / 0.14;
+          z = -0.022 + 0.028 * Math.sin(pk * Math.PI) * (0.82 + n * 0.4);
+        } else if (rn < 0.56) {
+          const bowl = 1 - (rn - 0.3) / 0.26;
+          z = -0.038 * bowl * bowl * (1.05 + n * 0.2);
+        } else if (rn < 0.8) {
+          const rimT = (rn - 0.56) / 0.24;
+          z = 0.022 * Math.sin(rimT * Math.PI) * (0.72 + n * 0.4);
+        } else {
+          z = 0.004 * (1 - (rn - 0.8) / 0.2) * (0.55 + n * 0.5);
+        }
+        const scallop = 1 + n * 0.06 * Math.min(1, rn * 1.2);
+        craterPos.setXYZ(i, x * scallop, y * scallop, z);
+        const melt = Math.max(0, 1 - rn / 0.42);
+        const ash = Math.max(0, (rn - 0.55) / 0.45);
+        craterCol[i * 3] = 0.1 + melt * 0.55 + ash * 0.14;
+        craterCol[i * 3 + 1] = 0.055 + melt * 0.2 + ash * 0.08;
+        craterCol[i * 3 + 2] = 0.035 + melt * 0.05 + ash * 0.04;
+      }
+      craterGeo.setAttribute('color', new THREE.BufferAttribute(craterCol, 3));
+      craterGeo.computeVertexNormals();
+      const craterFloor = new THREE.Mesh(
+        craterGeo,
+        new THREE.MeshStandardMaterial({
+          map: craterMap, emissiveMap: craterEmit, vertexColors: true,
+          transparent: true, alphaTest: 0.06, depthWrite: false,
+          roughness: 0.68, metalness: 0.12,
+          emissive: 0xff6a18, emissiveIntensity: 0
+        })
+      );
+      craterGroup.add(craterFloor);
+
+      function makeMeltDisc(size, color, z) {
+        const c = document.createElement('canvas');
+        c.width = c.height = 256;
+        const ctx = c.getContext('2d');
+        const g = ctx.createRadialGradient(128, 128, 0, 128, 128, 128);
+        g.addColorStop(0, 'rgba(255,210,120,0.95)');
+        g.addColorStop(0.22, 'rgba(255,120,28,0.78)');
+        g.addColorStop(0.48, 'rgba(210,48,10,0.42)');
+        g.addColorStop(0.76, 'rgba(90,12,4,0.12)');
+        g.addColorStop(1, 'rgba(0,0,0,0)');
+        ctx.fillStyle = g;
+        ctx.fillRect(0, 0, 256, 256);
+        const tex = new THREE.CanvasTexture(c);
+        const mesh = new THREE.Mesh(
+          new THREE.CircleGeometry(size, 64),
+          new THREE.MeshBasicMaterial({
+            map: tex, color, transparent: true, opacity: 0,
+            blending: THREE.AdditiveBlending, depthWrite: false
+          })
+        );
+        mesh.position.z = z;
+        craterGroup.add(mesh);
+        return mesh;
+      }
+      const meltPool = makeMeltDisc(CRATER_R * 0.34, 0xffc060, 0.014);
+      const meltHalo = makeMeltDisc(CRATER_R * 0.62, 0xff4a10, 0.008);
+      const meltOuter = makeMeltDisc(CRATER_R * 0.88, 0xff2208, 0.004);
+
+      function paintEjecta(ctx, w, h) {
+        const img = ctx.createImageData(w, h);
+        const d = img.data;
+        const cx = w * 0.5, cy = h * 0.5, maxR = w * 0.5;
+        for (let y = 0; y < h; y++) {
+          for (let x = 0; x < w; x++) {
+            const dx = (x - cx) / maxR, dy = (y - cy) / maxR;
+            const r = Math.sqrt(dx * dx + dy * dy);
+            const ang = Math.atan2(dy, dx);
+            const i = (y * w + x) * 4;
+            const n = fbm(dx * 9 + 1.2, dy * 9 + 3.4);
+            const n2 = fbm(dx * 22, dy * 22);
+            const ray = Math.pow(Math.max(0, Math.cos(ang * 6.0 + n * 3.2)), 8)
+              + Math.pow(Math.max(0, Math.cos(ang * 11.0 - n2 * 2.1)), 14) * 0.55;
+            const blanket = Math.max(0, 1 - r / 0.92) * (0.35 + n * 0.55);
+            const cover = Math.min(1, blanket + ray * (0.25 + r * 0.7));
+            const ash = 0.12 + n * 0.08;
+            d[i] = (28 + n * 22 + ray * 18);
+            d[i + 1] = (18 + n * 12 + ray * 8);
+            d[i + 2] = (12 + n * 6);
+            const fade = r > 0.42 ? Math.max(0, 1 - (r - 0.42) / 0.5) : 1;
+            d[i + 3] = cover * 180 * fade;
+          }
+        }
+        ctx.putImageData(img, 0, 0);
+      }
+      const ejectaFan = new THREE.Mesh(
+        new THREE.CircleGeometry(CRATER_R * 2.15, 96),
+        new THREE.MeshBasicMaterial({
+          map: canvasTex(paintEjecta, 384, 384),
+          transparent: true, opacity: 0, depthWrite: false
+        })
+      );
+      ejectaFan.position.z = -0.004;
+      craterGroup.add(ejectaFan);
+      const boulderGeo = new THREE.IcosahedronGeometry(0.018, 1);
+      const boulderMat = new THREE.MeshStandardMaterial({
+        color: 0x2c2218, roughness: 0.96, metalness: 0.08, flatShading: true,
+        emissive: 0x4a1808, emissiveIntensity: 0
+      });
+      const boulders = [];
+      for (let i = 0; i < 22; i++) {
+        const rock = new THREE.Mesh(boulderGeo, boulderMat.clone());
+        const ang = (i * 2.17) + (i % 5) * 0.33;
+        const rad = CRATER_R * (0.18 + ((i * 17) % 11) * 0.028 + (i % 4) * 0.04);
+        rock.position.set(Math.cos(ang) * rad, Math.sin(ang) * rad, 0.008 + (i % 5) * 0.003);
+        rock.scale.setScalar(0.55 + (i % 6) * 0.22);
+        rock.rotation.set(i * 0.7, i * 1.1, i * 0.4);
+        craterGroup.add(rock);
+        boulders.push(rock);
+      }
+      craterGroup.scale.setScalar(0.001);
+      craterGroup.visible = false;
+
+      let fogMap = placeholderTex('#ffffff');
+      let cloudMap = placeholderTex('#ffffff');
+      let highCloudMap = placeholderTex('#ffffff');
+      const fogLayer = new THREE.Mesh(
+        new THREE.SphereGeometry(EARTH_R + 0.02, 80, 80),
+        new THREE.MeshLambertMaterial({
+          color: 0xd8e4ee, transparent: true, opacity: 0.3, depthWrite: false,
+          alphaMap: fogMap
+        })
+      );
+      earthGroup.add(fogLayer);
+
+      const clouds = new THREE.Mesh(
+        new THREE.SphereGeometry(EARTH_R + 0.036, 96, 96),
+        new THREE.MeshLambertMaterial({
+          color: 0xffffff, transparent: true, opacity: 0.68, depthWrite: false,
+          alphaMap: cloudMap
+        })
+      );
+      earthGroup.add(clouds);
+
+      const highClouds = new THREE.Mesh(
+        new THREE.SphereGeometry(EARTH_R + 0.054, 80, 80),
+        new THREE.MeshLambertMaterial({
+          color: 0xf4f7ff, transparent: true, opacity: 0.34, depthWrite: false,
+          alphaMap: highCloudMap
+        })
+      );
+      earthGroup.add(highClouds);
+
+      const atmo = new THREE.Mesh(
+        new THREE.SphereGeometry(EARTH_R * 1.045, 80, 80),
+        new THREE.ShaderMaterial({
+          transparent: true, depthWrite: false, side: THREE.BackSide,
+          uniforms: {
+            glowColor: { value: new THREE.Color(0x6eb8ff) },
+            sunDir: { value: sun.position.clone().normalize() },
+            impactDir: { value: impactNormal.clone() },
+            impactGlow: { value: 0 },
+            intensity: { value: 1.0 }
+          },
+          vertexShader: [
+            'varying vec3 vWNormal; varying vec3 vWPos;',
+            'void main(){',
+            '  vec4 wp=modelMatrix*vec4(position,1.0);',
+            '  vWPos=wp.xyz;',
+            '  vWNormal=normalize(mat3(modelMatrix)*normal);',
+            '  gl_Position=projectionMatrix*viewMatrix*wp;',
+            '}'
+          ].join('\n'),
+          fragmentShader: [
+            'uniform vec3 glowColor; uniform vec3 sunDir; uniform vec3 impactDir;',
+            'uniform float intensity; uniform float impactGlow;',
+            'varying vec3 vWNormal; varying vec3 vWPos;',
+            'void main(){',
+            '  vec3 n=normalize(vWNormal);',
+            '  vec3 v=normalize(cameraPosition-vWPos);',
+            '  float fres=pow(1.0-max(dot(n,v),0.0), 2.8);',
+            '  float day=smoothstep(-0.15,0.45,dot(n,normalize(sunDir)));',
+            '  float term=pow(1.0-abs(dot(n,normalize(sunDir))), 3.0);',
+            '  float hit=max(0.0, dot(n,normalize(impactDir)));',
+            '  float blast=pow(hit, 6.0)*impactGlow;',
+            '  vec3 col=mix(glowColor, vec3(1.0,0.55,0.25), term*0.85);',
+            '  col=mix(col, vec3(1.0,0.72,0.32), clamp(blast,0.0,1.0));',
+            '  float a=fres*(0.18+day*0.72+term*0.55+blast*1.4)*intensity;',
+            '  gl_FragColor=vec4(col, clamp(a,0.0,0.95));',
+            '}'
+          ].join('\n')
+        })
+      );
+      earthGroup.add(atmo);
+
+      const haze = new THREE.Mesh(
+        new THREE.SphereGeometry(EARTH_R + 0.078, 64, 64),
+        new THREE.ShaderMaterial({
+          transparent: true, depthWrite: false, side: THREE.BackSide,
+          uniforms: { hazeA: { value: 0.08 }, hazeColor: { value: new THREE.Color(0xa8d8ff) } },
+          vertexShader: [
+            'varying vec3 vWNormal; varying vec3 vWPos;',
+            'void main(){',
+            '  vWNormal=normalize(mat3(modelMatrix)*position);',
+            '  vWPos=(modelMatrix*vec4(position,1.0)).xyz;',
+            '  gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);',
+            '}'
+          ].join('\n'),
+          fragmentShader: [
+            'uniform float hazeA; uniform vec3 hazeColor;',
+            'varying vec3 vWNormal; varying vec3 vWPos;',
+            'void main(){',
+            '  vec3 n=normalize(vWNormal);',
+            '  vec3 v=normalize(cameraPosition-vWPos);',
+            '  float fres=pow(1.0-max(dot(n,v),0.0), 2.6);',
+            '  gl_FragColor=vec4(hazeColor, fres*hazeA);',
+            '}'
+          ].join('\n')
+        })
+      );
+      earthGroup.add(haze);
+
+      const dust = new THREE.Mesh(
+        new THREE.SphereGeometry(EARTH_R * 1.085, 80, 80),
+        new THREE.ShaderMaterial({
+          transparent: true, depthWrite: false, side: THREE.BackSide,
+          uniforms: {
+            impactDir: { value: impactNormal.clone() },
+            dustR: { value: 0 },
+            dustOpacity: { value: 0 },
+            time: { value: 0 }
+          },
+          vertexShader: [
+            'varying vec3 vN; varying vec3 vWNormal; varying vec3 vWPos;',
+            'void main(){',
+            '  vN=normalize(position);',
+            '  vWNormal=normalize(mat3(modelMatrix)*position);',
+            '  vWPos=(modelMatrix*vec4(position,1.0)).xyz;',
+            '  gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);',
+            '}'
+          ].join('\n'),
+          fragmentShader: [
+            'uniform vec3 impactDir; uniform float dustR; uniform float dustOpacity; uniform float time;',
+            'varying vec3 vN; varying vec3 vWNormal; varying vec3 vWPos;',
+            'void main(){',
+            '  vec3 ln=normalize(vN);',
+            '  float ang=acos(clamp(dot(ln,normalize(impactDir)),-1.0,1.0));',
+            '  float n=0.5+0.5*(sin(ln.x*5.5+ln.z*3.8+time*0.11)+sin(ln.y*4.6-time*0.07)+sin((ln.x+ln.z)*7.2+time*0.05)*0.7);',
+            '  float az=atan(ln.z,ln.x);',
+            '  float tongue=pow(max(0.0, cos(az*3.0+n*2.1)), 2.4)*0.22;',
+            '  float reach=dustR*(0.72+n*0.38+tongue);',
+            '  float cover=1.0-smoothstep(reach*0.12, reach, ang);',
+            '  cover=pow(max(cover,0.0), 1.45)*dustOpacity*(0.35+n*0.65);',
+            '  vec3 wn=normalize(vWNormal);',
+            '  vec3 view=normalize(cameraPosition-vWPos);',
+            '  float fres=pow(1.0-max(dot(wn,view),0.0), 1.55);',
+            '  float vol=mix(0.12, 1.0, fres);',
+            '  vec3 col=mix(vec3(0.22,0.18,0.14), vec3(0.07,0.055,0.04), cover);',
+            '  float a=cover*vol*(0.38+n*0.16);',
+            '  if(a<0.006) discard;',
+            '  gl_FragColor=vec4(col, clamp(a,0.0,0.62));',
+            '}'
+          ].join('\n')
+        })
+      );
+      earthGroup.add(dust);
+
+      const rockGeo = new THREE.IcosahedronGeometry(ASTEROID_R, 3);
+      const pos = rockGeo.attributes.position;
+      for (let i = 0; i < pos.count; i++) {
+        const v = new THREE.Vector3().fromBufferAttribute(pos, i);
+        const nrm = v.clone().normalize();
+        const crag = Math.sin(v.x * 42) * 0.09 + Math.cos(v.y * 31) * 0.08 + Math.sin(v.z * 25) * 0.07
+          + Math.sin(v.x * 17 + v.y * 13) * 0.05;
+        v.copy(nrm.multiplyScalar(ASTEROID_R * (0.78 + crag + Math.random() * 0.04)));
+        pos.setXYZ(i, v.x, v.y, v.z);
+      }
+      rockGeo.computeVertexNormals();
+      const asteroid = new THREE.Mesh(rockGeo, new THREE.MeshStandardMaterial({
+        color: 0x4a3830, roughness: 0.97, metalness: 0.12,
+        emissive: 0xff3a08, emissiveIntensity: 0.35,
+        flatShading: true
+      }));
+      scene.add(asteroid);
+
+      // Sphere meshes, never camera-facing sprites — a billboard plane
+      // through the rock cuts Earth in a circle whose rim sits on the crater
+      // and rotates with the camera.
+      const glowGeo = new THREE.SphereGeometry(1, 18, 14);
+      function makeAsteroidGlow(color, size) {
+        const mat = new THREE.MeshBasicMaterial({
+          color: color, transparent: true, opacity: 0,
+          blending: THREE.AdditiveBlending, depthWrite: false, depthTest: true
+        });
+        const mesh = new THREE.Mesh(glowGeo, mat);
+        mesh.scale.setScalar(size);
+        asteroid.add(mesh);
+        return mesh;
+      }
+      const fireCore = makeAsteroidGlow(0xffe8b8, ASTEROID_R * 1.42);
+      const fireShell = makeAsteroidGlow(0xff6a20, ASTEROID_R * 2.05);
+      const fireHalo = makeAsteroidGlow(0xff3a08, ASTEROID_R * 0.01);
+      const plasmaShell = makeAsteroidGlow(0xa8dcff, ASTEROID_R * 1.68);
+      const plasmaHalo = makeAsteroidGlow(0x6aa8ff, ASTEROID_R * 0.01);
+      fireHalo.visible = false;
+      plasmaHalo.visible = false;
+      const heatLight = new THREE.PointLight(0xff6a20, 0, 4.2, 1.7);
+      asteroid.add(heatLight);
+
+      const TAIL = 720;
+      const tailPos = new Float32Array(TAIL * 3);
+      const tailCol = new Float32Array(TAIL * 3);
+      const tailLife = new Float32Array(TAIL);
+      for (let i = 0; i < TAIL; i++) tailPos[i * 3] = tailPos[i * 3 + 1] = tailPos[i * 3 + 2] = 80;
+      const tailGeo = new THREE.BufferGeometry();
+      tailGeo.setAttribute('position', new THREE.BufferAttribute(tailPos, 3));
+      tailGeo.setAttribute('color', new THREE.BufferAttribute(tailCol, 3));
+      const tail = new THREE.Points(tailGeo, new THREE.PointsMaterial({
+        size: 0.038, vertexColors: true, transparent: true, opacity: 0.95,
+        blending: THREE.AdditiveBlending, depthWrite: false, depthTest: false, sizeAttenuation: true
+      }));
+      scene.add(tail);
+
+      const shock = new THREE.Mesh(
+        new THREE.SphereGeometry(EARTH_R + 0.035, 96, 96),
+        new THREE.ShaderMaterial({
+          transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.FrontSide,
+          uniforms: {
+            impactDir: { value: impactNormal.clone() },
+            waveR: { value: 0 },
+            waveW: { value: 0.07 },
+            waveA: { value: 0 }
+          },
+          vertexShader: 'varying vec3 vN; void main(){ vN=normalize(position); gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0); }',
+          fragmentShader: [
+            'uniform vec3 impactDir; uniform float waveR; uniform float waveW; uniform float waveA; varying vec3 vN;',
+            'void main(){',
+            '  float ang=acos(clamp(dot(normalize(vN),normalize(impactDir)),-1.0,1.0));',
+            '  float n=sin(vN.x*28.0+vN.y*17.0)*0.5+0.5;',
+            '  float w=waveW*(0.85+n*0.3);',
+            '  float ring=smoothstep(waveR-w,waveR,ang)*(1.0-smoothstep(waveR,waveR+w*0.7,ang));',
+            '  float trail=smoothstep(waveR-w*3.2,waveR-w,ang)*(1.0-smoothstep(waveR-w,waveR,ang))*0.35;',
+            '  vec3 col=mix(vec3(1.0,0.45,0.12), vec3(1.0,0.95,0.78), ring);',
+            '  gl_FragColor=vec4(col, (ring*0.95+trail)*waveA);',
+            '}'
+          ].join('\n')
+        })
+      );
+      shock.visible = false;
+      earthGroup.add(shock);
+
+      const impactBloom = new THREE.Mesh(
+        new THREE.SphereGeometry(EARTH_R + 0.035, 80, 80),
+        new THREE.ShaderMaterial({
+          transparent: true, depthWrite: false, side: THREE.FrontSide,
+          blending: THREE.AdditiveBlending,
+          uniforms: {
+            impactDir: { value: impactNormal.clone() },
+            bloomR: { value: 0 },
+            bloomA: { value: 0 }
+          },
+          vertexShader: 'varying vec3 vN; void main(){ vN=normalize(position); gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0); }',
+          fragmentShader: [
+            'uniform vec3 impactDir; uniform float bloomR; uniform float bloomA; varying vec3 vN;',
+            'void main(){',
+            '  vec3 n=normalize(vN);',
+            '  float ang=acos(clamp(dot(n,normalize(impactDir)),-1.0,1.0));',
+            '  float soft=1.0-smoothstep(0.0, max(0.001,bloomR), ang);',
+            '  float core=pow(soft, 5.2);',
+            '  float mid=pow(soft, 2.4);',
+            '  float nse=sin(n.x*27.0+n.y*19.0)*0.05+sin(n.z*31.0-n.x*13.0)*0.04;',
+            '  vec3 col=mix(vec3(0.72,0.12,0.02), vec3(1.0,0.42,0.06), mid);',
+            '  col=mix(col, vec3(1.0,0.72,0.22), core);',
+            '  float a=clamp((soft*0.28+core*0.38+nse)*bloomA,0.0,0.72);',
+            '  if(a<0.012) discard;',
+            '  gl_FragColor=vec4(col, a);',
+            '}'
+          ].join('\n')
+        })
+      );
+      earthGroup.add(impactBloom);
+
+      const tsunami = new THREE.Mesh(
+        new THREE.SphereGeometry(EARTH_R + 0.018, 96, 96),
+        new THREE.ShaderMaterial({
+          transparent: true, depthWrite: false, side: THREE.FrontSide,
+          uniforms: {
+            impactDir: { value: impactNormal.clone() },
+            waveR: { value: 0 },
+            waveA: { value: 0 }
+          },
+          vertexShader: 'varying vec3 vN; void main(){ vN=normalize(position); gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0); }',
+          fragmentShader: [
+            'uniform vec3 impactDir; uniform float waveR; uniform float waveA; varying vec3 vN;',
+            'void main(){',
+            '  float ang=acos(clamp(dot(normalize(vN),normalize(impactDir)),-1.0,1.0));',
+            '  float band=smoothstep(waveR-0.08,waveR,ang)*(1.0-smoothstep(waveR,waveR+0.05,ang));',
+            '  float foam=pow(band,1.5);',
+            '  vec3 col=mix(vec3(0.05,0.25,0.35), vec3(0.75,0.88,0.95), foam);',
+            '  gl_FragColor=vec4(col, band*waveA*0.75);',
+            '}'
+          ].join('\n')
+        })
+      );
+      earthGroup.add(tsunami);
+
+      const flashOrb = new THREE.PointLight(0xfff4d0, 0, 9.5, 1.35);
+      flashOrb.position.copy(impactPoint.clone().multiplyScalar(1.22));
+      earthGroup.add(flashOrb);
+      const fillOrb = new THREE.PointLight(0xff8a32, 0, 6.8, 1.45);
+      fillOrb.position.copy(impactPoint.clone().multiplyScalar(1.08));
+      earthGroup.add(fillOrb);
+      const craterLight = new THREE.PointLight(0xff7a28, 0, 3.8, 1.65);
+      craterLight.position.copy(impactPoint.clone().multiplyScalar(1.055));
+      earthGroup.add(craterLight);
+
+      const scorch = new THREE.Mesh(
+        new THREE.SphereGeometry(EARTH_R + 0.012, 80, 80),
+        new THREE.ShaderMaterial({
+          transparent: true, depthWrite: false, side: THREE.FrontSide,
+          uniforms: {
+            impactDir: { value: impactNormal.clone() },
+            scorchR: { value: 0 },
+            scorchA: { value: 0 }
+          },
+          vertexShader: 'varying vec3 vN; void main(){ vN=normalize(position); gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0); }',
+          fragmentShader: [
+            'uniform vec3 impactDir; uniform float scorchR; uniform float scorchA; varying vec3 vN;',
+            'void main(){',
+            '  vec3 nrm=normalize(vN);',
+            '  vec3 dir=normalize(impactDir);',
+            '  float ang=acos(clamp(dot(nrm,dir),-1.0,1.0));',
+            '  float n=sin(nrm.x*18.0+nrm.y*11.0)*0.42+sin(nrm.z*23.0+nrm.x*9.0)*0.32+sin(nrm.y*31.0-nrm.z*14.0)*0.18;',
+            '  float n2=sin(nrm.x*41.0-nrm.z*27.0)*0.28+sin(nrm.y*53.0+nrm.x*19.0)*0.2;',
+            '  float az=atan(nrm.z,nrm.x);',
+            '  float ray=pow(max(0.0, cos(az*6.0+n*2.8)), 9.0)+pow(max(0.0, cos(az*11.0-n2*3.1)), 14.0)*0.55;',
+            '  float lobe=0.62+n*0.38+n2*0.22+sin(az*3.0+nrm.y*6.0)*0.16;',
+            '  float blanket=1.0-smoothstep(scorchR*0.04, scorchR*lobe, ang);',
+            '  blanket=pow(max(blanket,0.0), 1.85)*(0.28+n*0.42+n2*0.18);',
+            '  float streaks=ray*smoothstep(scorchR*1.22, scorchR*0.1, ang);',
+            '  float cover=max(blanket, streaks*0.72);',
+            '  float melt=pow(max(1.0-ang/(scorchR*0.42+0.001),0.0), 2.4);',
+            '  float glass=pow(max(1.0-ang/(scorchR*0.2+0.001),0.0), 3.4);',
+            '  vec3 ash=mix(vec3(0.16,0.11,0.07), vec3(0.28,0.14,0.06), cover);',
+            '  vec3 hot=mix(vec3(0.55,0.14,0.03), vec3(1.0,0.62,0.18), glass);',
+            '  vec3 col=mix(ash, hot, melt);',
+            '  float a=cover*scorchA*(0.55+n*0.12);',
+            '  if(a<0.018) discard;',
+            '  gl_FragColor=vec4(col, clamp(a,0.0,0.72));',
+            '}'
+          ].join('\n')
+        })
+      );
+      earthGroup.add(scorch);
+
+      function makeSpriteTex(kind) {
+        const c = document.createElement('canvas');
+        c.width = c.height = kind === 'cloud' ? 128 : 64;
+        const ctx = c.getContext('2d');
+        const cx = c.width * 0.5, cy = c.height * 0.5, r = c.width * 0.5;
+        ctx.clearRect(0, 0, c.width, c.height);
+        if (kind === 'cloud') {
+          // soft multi-lobe billow — no hard disc edge
+          for (let i = 0; i < 7; i++) {
+            const ox = (Math.sin(i * 2.4) * 0.22 + Math.cos(i * 1.1) * 0.08) * r;
+            const oy = (Math.cos(i * 1.9) * 0.2 + Math.sin(i * 0.7) * 0.1) * r;
+            const rr = r * (0.42 + (i % 3) * 0.1);
+            const g = ctx.createRadialGradient(cx + ox, cy + oy, 0, cx + ox, cy + oy, rr);
+            g.addColorStop(0, 'rgba(255,255,255,0.55)');
+            g.addColorStop(0.35, 'rgba(255,255,255,0.28)');
+            g.addColorStop(0.7, 'rgba(255,255,255,0.08)');
+            g.addColorStop(1, 'rgba(255,255,255,0)');
+            ctx.fillStyle = g;
+            ctx.beginPath();
+            ctx.arc(cx + ox, cy + oy, rr, 0, Math.PI * 2);
+            ctx.fill();
+          }
+          const edge = ctx.createRadialGradient(cx, cy, r * 0.2, cx, cy, r);
+          edge.addColorStop(0, 'rgba(255,255,255,0.2)');
+          edge.addColorStop(0.55, 'rgba(255,255,255,0.08)');
+          edge.addColorStop(1, 'rgba(255,255,255,0)');
+          ctx.fillStyle = edge;
+          ctx.fillRect(0, 0, c.width, c.height);
+        } else if (kind === 'mist') {
+          const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, r);
+          g.addColorStop(0, 'rgba(255,255,255,0.55)');
+          g.addColorStop(0.25, 'rgba(255,255,255,0.28)');
+          g.addColorStop(0.55, 'rgba(255,255,255,0.1)');
+          g.addColorStop(0.8, 'rgba(255,255,255,0.025)');
+          g.addColorStop(1, 'rgba(255,255,255,0)');
+          ctx.fillStyle = g;
+          ctx.fillRect(0, 0, c.width, c.height);
+        } else if (kind === 'soot') {
+          const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, r);
+          g.addColorStop(0, 'rgba(255,255,255,0.42)');
+          g.addColorStop(0.3, 'rgba(255,255,255,0.18)');
+          g.addColorStop(0.65, 'rgba(255,255,255,0.05)');
+          g.addColorStop(1, 'rgba(255,255,255,0)');
+          ctx.fillStyle = g;
+          ctx.fillRect(0, 0, c.width, c.height);
+        } else {
+          const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, r);
+          g.addColorStop(0, 'rgba(255,255,255,1)');
+          g.addColorStop(0.22, 'rgba(255,255,255,0.85)');
+          g.addColorStop(0.4, 'rgba(255,255,255,0.25)');
+          g.addColorStop(0.7, 'rgba(255,255,255,0)');
+          g.addColorStop(1, 'rgba(255,255,255,0)');
+          ctx.fillStyle = g;
+          ctx.fillRect(0, 0, c.width, c.height);
+        }
+        const t = new THREE.CanvasTexture(c);
+        t.needsUpdate = true;
+        return t;
+      }
+      const mistTex = makeSpriteTex('mist');
+      const sootTex = makeSpriteTex('soot');
+      const gritTex = makeSpriteTex('grit');
+      const cloudTex = makeSpriteTex('cloud');
+      tail.material.map = mistTex;
+      tail.material.needsUpdate = true;
+
+      function makeDebris(count, size, opacity, map, blending, softGrow) {
+        const p = new Float32Array(count * 3);
+        const c = new Float32Array(count * 3);
+        const s = new Float32Array(count);
+        const g = new THREE.BufferGeometry();
+        g.setAttribute('position', new THREE.BufferAttribute(p, 3));
+        g.setAttribute('color', new THREE.BufferAttribute(c, 3));
+        g.setAttribute('aSize', new THREE.BufferAttribute(s, 1));
+        const mat = new THREE.ShaderMaterial({
+          transparent: true, depthWrite: false, depthTest: true,
+          blending: blending || THREE.NormalBlending,
+          uniforms: {
+            map: { value: map },
+            uOpacity: { value: opacity },
+            uScale: { value: size },
+            uGrow: { value: softGrow ? 1.0 : 0.0 }
+          },
+          vertexShader: [
+            'attribute float aSize; attribute vec3 color;',
+            'varying vec3 vColor; varying float vLife;',
+            'uniform float uScale; uniform float uGrow;',
+            'void main(){',
+            '  vColor=color;',
+            '  vLife=aSize;',
+            '  float dist=length(position);',
+            '  // shrink before the camera-facing quad can clip Earth into a circle',
+            '  float lift=smoothstep(2.46, 2.62, dist);',
+            '  vec4 mv=modelViewMatrix*vec4(position,1.0);',
+            '  float rnd=fract(sin(dot(position.xy+position.z, vec2(12.9898,78.233)))*43758.5453);',
+            '  float age=1.0-aSize;',
+            '  float grow=mix(1.0, 1.0+age*0.45, uGrow);',
+            '  float sz=mix(uScale*0.55,uScale*1.05,rnd)*grow*lift;',
+            '  if(aSize<0.001 || sz<0.0008){ gl_PointSize=0.0; gl_Position=vec4(2.0,2.0,2.0,1.0); return; }',
+            '  gl_PointSize=sz*(280.0/max(1.2,-mv.z));',
+            '  gl_Position=projectionMatrix*mv;',
+            '}'
+          ].join('\n'),
+          fragmentShader: [
+            'uniform sampler2D map; uniform float uOpacity; uniform float uGrow;',
+            'varying vec3 vColor; varying float vLife;',
+            'void main(){',
+            '  vec2 pc=gl_PointCoord-vec2(0.5);',
+            '  float rr=length(pc)*2.0;',
+            '  if(rr>0.92) discard;',
+            '  vec4 tex=texture2D(map, gl_PointCoord);',
+            '  float age=1.0-vLife;',
+            '  float fade=smoothstep(0.0,0.22,age)*smoothstep(0.0,0.45,vLife);',
+            '  float rim=1.0-smoothstep(0.42,0.92,rr);',
+            '  float soft=pow(max(tex.a,0.0), mix(1.15, 0.88, uGrow))*rim;',
+            '  float a=soft*uOpacity*fade;',
+            '  if(a<0.012) discard;',
+            '  gl_FragColor=vec4(vColor,a);',
+            '}'
+          ].join('\n')
+        });
+        const pts = new THREE.Points(g, mat);
+        earthGroup.add(pts);
+        const parts = [];
+        for (let i = 0; i < count; i++) {
+          parts.push({ life: 0, max: 1, pos: new THREE.Vector3(80, 80, 80), vel: new THREE.Vector3(), spin: Math.random(), grow: 1 });
+          p[i * 3] = p[i * 3 + 1] = p[i * 3 + 2] = 80;
+          s[i] = 0;
+        }
+        return { count, p, c, s, g, pts, parts, mat };
+      }
+
+      // Dense enough to read as a column, large enough to keep mass without sprites
+      const ejecta = makeDebris(1800, 0.014, 0.98, gritTex, THREE.NormalBlending, false);
+      const smoke = makeDebris(4200, 0.038, 0.58, cloudTex, THREE.NormalBlending, true);
+      const soot = makeDebris(3200, 0.030, 0.58, sootTex, THREE.NormalBlending, true);
+      const mistFine = makeDebris(2600, 0.032, 0.40, mistTex, THREE.NormalBlending, true);
+
+      // No camera-facing plume sprites. A billboard through the crater
+      // clips Earth as a circle whose rim sits on the hit and tracks the camera.
+
+      const groundFog = new THREE.Mesh(
+        new THREE.SphereGeometry(EARTH_R + 0.03, 80, 80),
+        new THREE.ShaderMaterial({
+          transparent: true, depthWrite: false, side: THREE.FrontSide,
+          uniforms: {
+            impactDir: { value: impactNormal.clone() },
+            fogR: { value: 0 },
+            fogA: { value: 0 },
+            time: { value: 0 }
+          },
+          vertexShader: 'varying vec3 vN; void main(){ vN=normalize(position); gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0); }',
+          fragmentShader: [
+            'uniform vec3 impactDir; uniform float fogR; uniform float fogA; uniform float time; varying vec3 vN;',
+            'void main(){',
+            '  vec3 nrm=normalize(vN);',
+            '  float ang=acos(clamp(dot(nrm,normalize(impactDir)),-1.0,1.0));',
+            '  float n=0.5+0.5*(sin(nrm.x*14.0+time*0.25)+sin(nrm.z*11.0-time*0.2)+sin(nrm.y*17.0+time*0.15));',
+            '  float n2=0.5+0.5*(sin(nrm.x*31.0-nrm.y*19.0+time*0.12)+sin(nrm.z*27.0+time*0.08));',
+            '  float az=atan(nrm.z,nrm.x);',
+            '  float tongue=pow(max(0.0, cos(az*4.0+n*2.4)), 3.2)*0.55+pow(max(0.0, cos(az*7.0-n2*1.8)), 5.5)*0.28;',
+            '  float reach=fogR*(0.55+n*0.55+n2*0.28+tongue);',
+            '  float cover=1.0-smoothstep(reach*0.08, reach, ang);',
+            '  cover=pow(max(cover,0.0), 1.7)*(0.22+n*0.55+n2*0.28);',
+            '  vec3 col=mix(vec3(0.28,0.24,0.20), vec3(0.10,0.08,0.06), cover);',
+            '  float a=cover*fogA*(0.42+n*0.16);',
+            '  if(a<0.012) discard;',
+            '  gl_FragColor=vec4(col, clamp(a,0.0,0.55));',
+            '}'
+          ].join('\n')
+        })
+      );
+      earthGroup.add(groundFog);
+
+      function resetDebris(sys) {
+        for (let i = 0; i < sys.count; i++) {
+          sys.parts[i].life = 0;
+          sys.p[i * 3] = 80;
+          sys.p[i * 3 + 1] = 80;
+          sys.p[i * 3 + 2] = 80;
+          sys.s[i] = 0;
+        }
+        sys.g.attributes.position.needsUpdate = true;
+        sys.g.attributes.aSize.needsUpdate = true;
+      }
+
+      function spawnBurst(sys, origin, normal, n, speed, spread, life, palette, jet) {
+        let spawned = 0;
+        for (let i = 0; i < sys.count && spawned < n; i++) {
+          const pr = sys.parts[i];
+          if (pr.life > 0) continue;
+          // random cone — wide scatter avoids ring / shell stacking
+          const rx = Math.random() - 0.5, ry = Math.random() - 0.5, rz = Math.random() - 0.5;
+          const dir = normal.clone().add(new THREE.Vector3(rx, ry, rz).multiplyScalar(spread)).normalize();
+          const heightBias = Math.pow(Math.random(), jet ? 0.48 : 1.05);
+          const lift = jet ? (0.28 + heightBias * 1.45) : (0.18 + Math.random() * 0.32);
+          pr.pos.copy(origin).addScaledVector(dir, 0.08 + Math.random() * 0.22);
+          pr.pos.addScaledVector(normal, 0.34 + lift * (jet ? 0.95 : 0.58));
+          const spd = speed * (0.28 + Math.random() * 1.15 + heightBias * 0.45);
+          pr.vel.copy(dir).multiplyScalar(spd);
+          if (jet) pr.vel.addScaledVector(normal, speed * (0.28 + heightBias * 0.95));
+          pr.vel.x += (Math.random() - 0.5) * speed * 0.18;
+          pr.vel.y += (Math.random() - 0.5) * speed * 0.18;
+          pr.vel.z += (Math.random() - 0.5) * speed * 0.18;
+          pr.max = life * (0.5 + Math.random() * 0.9);
+          pr.life = pr.max;
+          pr.spin = Math.random() * Math.PI * 2;
+          pr.grow = 0.7 + Math.random() * 0.9;
+          const col = palette[(spawned + (Math.random() * palette.length | 0)) % palette.length];
+          const j = Math.random() * 0.1 - 0.05;
+          sys.c[i * 3] = Math.max(0, col[0] + j);
+          sys.c[i * 3 + 1] = Math.max(0, col[1] + j * 0.85);
+          sys.c[i * 3 + 2] = Math.max(0, col[2] + j * 0.7);
+          sys.s[i] = 1;
+          spawned++;
+        }
+        sys.g.attributes.color.needsUpdate = true;
+        sys.g.attributes.aSize.needsUpdate = true;
+      }
+
+      const _n = new THREE.Vector3();
+      const _side = new THREE.Vector3();
+      const _up = new THREE.Vector3(0.2, 1, 0.1);
+      function stepDebris(sys, dt, drag, gravity, floorR, rise, swirl) {
+        for (let i = 0; i < sys.count; i++) {
+          const pr = sys.parts[i];
+          if (pr.life <= 0) {
+            // park far off-camera — origin sits inside Earth and a leftover
+            // point sprite would clip as a camera-facing circle through the crater
+            sys.p[i * 3] = 80;
+            sys.p[i * 3 + 1] = 80;
+            sys.p[i * 3 + 2] = 80;
+            sys.s[i] = 0;
+            continue;
+          }
+          pr.life -= dt;
+          const age = 1 - pr.life / pr.max;
+          sys.s[i] = Math.max(0.001, pr.life / pr.max);
+          pr.vel.multiplyScalar(drag);
+          _n.copy(pr.pos);
+          const plen = _n.length();
+          if (plen > 1e-6) _n.multiplyScalar(1 / plen);
+          if (gravity) pr.vel.addScaledVector(_n, gravity);
+          if (rise) pr.vel.addScaledVector(_n, rise * (1 - age * 0.65));
+          if (swirl) {
+            _side.crossVectors(_n, _up).normalize();
+            pr.vel.addScaledVector(_side, Math.sin(pr.spin * 40 + age * 8) * swirl);
+          }
+          pr.pos.addScaledVector(pr.vel, dt);
+          if (floorR) {
+            const len = pr.pos.length();
+            if (len < floorR) {
+              pr.pos.multiplyScalar((floorR + 0.008) / Math.max(len, 1e-6));
+              _n.copy(pr.pos).multiplyScalar(1 / (floorR + 0.008));
+              pr.vel.reflect(_n).multiplyScalar(0.18);
+            }
+          }
+          sys.p[i * 3] = pr.pos.x;
+          sys.p[i * 3 + 1] = pr.pos.y;
+          sys.p[i * 3 + 2] = pr.pos.z;
+        }
+        sys.g.attributes.position.needsUpdate = true;
+        sys.g.attributes.aSize.needsUpdate = true;
+      }
+
+      let start = performance.now();
+      let flashPeak = 0;
+      let lastPhase = '';
+      let debrisBurst = 0;
+      let lastDebris = 0;
+      let simTime = 0;
+      let grainClock = 0;
+      let playing = false;
+      let frameOpen = false;
+      let introT = 0;
+      const shake = new THREE.Vector3();
+      const holdCam = new THREE.Vector3(0.15, 0.35, 4.15);
+
+      function resetSim() {
+        start = performance.now();
+        flashPeak = 0;
+        lastPhase = '';
+        debrisBurst = 0;
+        lastDebris = 0;
+        simTime = 0;
+        introT = 0;
+        frameOpen = false;
+        shake.set(0, 0, 0);
+        document.body.classList.remove('is-open');
+        hud.heat.style.opacity = 0;
+        groundFog.material.uniforms.fogR.value = 0;
+        groundFog.material.uniforms.fogA.value = 0;
+        camera.fov = 42;
+        camera.updateProjectionMatrix();
+        asteroid.visible = true;
+        asteroid.material.emissiveIntensity = 0.35;
+        tail.visible = true;
+        fireCore.material.opacity = 0;
+        fireShell.material.opacity = 0;
+        fireHalo.material.opacity = 0;
+        plasmaShell.material.opacity = 0;
+        plasmaHalo.material.opacity = 0;
+        fireCore.visible = true;
+        fireShell.visible = true;
+        plasmaShell.visible = true;
+        fireCore.scale.setScalar(ASTEROID_R * 1.42);
+        fireShell.scale.setScalar(ASTEROID_R * 2.05);
+        fireHalo.visible = false;
+        fireHalo.scale.setScalar(ASTEROID_R * 0.01);
+        plasmaShell.scale.setScalar(ASTEROID_R * 1.68);
+        plasmaHalo.visible = false;
+        plasmaHalo.scale.setScalar(ASTEROID_R * 0.01);
+        heatLight.intensity = 0;
+        dust.material.uniforms.dustR.value = 0;
+        dust.material.uniforms.dustOpacity.value = 0;
+        dust.material.uniforms.time.value = 0;
+        scorch.material.uniforms.scorchR.value = 0;
+        scorch.material.uniforms.scorchA.value = 0;
+        shock.visible = false;
+        shock.material.uniforms.waveR.value = 0;
+        shock.material.uniforms.waveA.value = 0;
+        tsunami.material.uniforms.waveR.value = 0;
+        tsunami.material.uniforms.waveA.value = 0;
+        impactBloom.material.uniforms.bloomR.value = 0;
+        impactBloom.material.uniforms.bloomA.value = 0;
+        craterGroup.visible = false;
+        craterGroup.scale.setScalar(0.001);
+        craterFloor.material.emissiveIntensity = 0;
+        craterFloor.material.emissive.set(0xff6a18);
+        meltPool.material.opacity = 0;
+        meltHalo.material.opacity = 0;
+        meltOuter.material.opacity = 0;
+        ejectaFan.material.opacity = 0;
+        boulders.forEach((b) => { b.material.emissiveIntensity = 0; });
+        craterLight.intensity = 0;
+        flashOrb.intensity = 0;
+        fillOrb.intensity = 0;
+        atmo.material.uniforms.impactGlow.value = 0;
+        hud.flash.style.opacity = 0;
+        renderer.toneMappingExposure = 1.05;
+        sun.intensity = 1.85;
+        ambient.intensity = 0.16;
+        hemi.intensity = 0.32;
+        renderer.toneMappingExposure = 1.05;
+        atmo.material.uniforms.glowColor.value.set(0x6eb8ff);
+        atmo.material.uniforms.intensity.value = 1.0;
+        fogLayer.material.opacity = 0.3;
+        fogLayer.material.color.set(0xd8e4ee);
+        clouds.material.opacity = 0.68;
+        clouds.material.color.set(0xffffff);
+        highClouds.material.opacity = 0.34;
+        highClouds.material.color.set(0xf4f7ff);
+        haze.material.uniforms.hazeA.value = 0.08;
+        haze.material.uniforms.hazeColor.value.set(0xa8d8ff);
+        nights.material.opacity = 0.85;
+        earthGroup.rotation.set(0, 0, 0);
+        fogLayer.rotation.set(0, 0, 0);
+        clouds.rotation.set(0, 0, 0);
+        highClouds.rotation.set(0, 0, 0);
+        asteroid.rotation.set(0, 0, 0);
+        asteroid.scale.setScalar(1);
+        asteroid.material.emissive.set(0xff3a08);
+        hud.dust.textContent = '0%';
+        hud.flash.style.opacity = 0;
+        hud.heat.style.opacity = 0;
+        controls.autoRotateSpeed = 0.18;
+        for (let i = 0; i < TAIL; i++) {
+          tailLife[i] = 0;
+          tailPos[i * 3] = tailPos[i * 3 + 1] = tailPos[i * 3 + 2] = 80;
+        }
+        resetDebris(ejecta);
+        resetDebris(smoke);
+        resetDebris(soot);
+        resetDebris(mistFine);
+        ejecta.mat.uniforms.uOpacity.value = 0.95;
+        smoke.mat.uniforms.uOpacity.value = 0.72;
+        soot.mat.uniforms.uOpacity.value = 0.8;
+        mistFine.mat.uniforms.uOpacity.value = 0.55;
+        if (typeof snapCamera === 'function') snapCamera();
+      }
+      const paneToggle = document.getElementById('pane-toggle');
+      paneToggle.addEventListener('click', function () {
+        const collapsed = document.body.classList.toggle('pane-min');
+        paneToggle.textContent = collapsed ? '+' : '–';
+        paneToggle.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+        paneToggle.title = collapsed ? 'Expand detail pane' : 'Minimize detail pane';
+      });
+      function swapMap(mesh, key, next) {
+        const mat = mesh.material;
+        const prev = mat[key];
+        mat[key] = next;
+        mat.needsUpdate = true;
+        if (prev && prev !== next && prev.dispose) prev.dispose();
+        return next;
+      }
+
+      async function boot() {
+        setLoad(5, 'Opening the frame');
+        await yieldFrame();
+        await bakeElevation();
+
+        setLoad(46, 'Painting continents');
+        await yieldFrame();
+        earthMap = swapMap(earth, 'map', canvasTex(paintCretaceous, MAP_W, MAP_H));
+
+        setLoad(56, 'Carving relief');
+        await yieldFrame();
+        bumpMap = swapMap(earth, 'bumpMap', canvasTex(paintBump, 1920, 960));
+
+        setLoad(64, 'Polishing seas');
+        await yieldFrame();
+        specMap = swapMap(earth, 'roughnessMap', canvasTex(paintSpec, 1024, 512));
+        waterMap = swapMap(oceanGlint, 'alphaMap', canvasTex(paintWater, 1024, 512));
+
+        setLoad(74, 'Lighting the night side');
+        await yieldFrame();
+        nightMap = swapMap(nights, 'map', canvasTex(paintNight, 1280, 640));
+
+        setLoad(82, 'Laying haze');
+        await yieldFrame();
+        fogMap = swapMap(fogLayer, 'alphaMap', canvasTex(paintFog, 768, 384));
+
+        setLoad(88, 'Gathering clouds');
+        await yieldFrame();
+        cloudMap = swapMap(clouds, 'alphaMap', canvasTex((ctx, w, h) => paintClouds(ctx, w, h, 0.24, 1), 1536, 768));
+
+        setLoad(95, 'High cirrus');
+        await yieldFrame();
+        highCloudMap = swapMap(highClouds, 'alphaMap', canvasTex((ctx, w, h) => paintClouds(ctx, w, h, 0.38, 1.7), 768, 384));
+
+        setLoad(100, 'Ready');
+        worldReady = true;
+        document.body.classList.remove('is-loading');
+        if (loadWrap) loadWrap.setAttribute('aria-busy', 'false');
+        if (startBtn) {
+          startBtn.disabled = false;
+          startBtn.textContent = 'Start';
+        }
+      }
+      boot();
+
+      document.getElementById('replay').addEventListener('click', function () {
+        if (!playing) {
+          if (worldReady) startBtn.click();
+          return;
+        }
+        resetSim();
+        document.body.classList.add('is-playing');
+        window.setTimeout(function () { document.body.classList.add('is-open'); }, 180);
+      });
+      startBtn.addEventListener('click', function () {
+        if (playing || !worldReady) return;
+        playing = true;
+        resetSim();
+        document.body.classList.add('is-playing');
+        window.setTimeout(function () { document.body.classList.add('is-open'); }, 280);
+      });
+
+      function ease(t) { return t * t * (3 - 2 * t); }
+      function clamp01(v) { return Math.max(0, Math.min(1, v)); }
+
+      const camModeEl = document.getElementById('cam-mode');
+      const camLockEl = document.getElementById('cam-lock');
+
+      function impactBasis(hit) {
+        const n = hit.clone().normalize();
+        const ref = Math.abs(n.y) > 0.92 ? new THREE.Vector3(1, 0, 0) : new THREE.Vector3(0, 1, 0);
+        const tangent = new THREE.Vector3().crossVectors(ref, n).normalize();
+        const bitan = new THREE.Vector3().crossVectors(n, tangent).normalize();
+        return { n, tangent, bitan };
+      }
+
+      function cameraRig(mode, t, hit, rock) {
+        const { n, tangent, bitan } = impactBasis(hit);
+        const look = camLockEl.checked ? hit.clone().multiplyScalar(0.84) : new THREE.Vector3();
+        let pos;
+        if (mode === 'close') {
+          pos = hit.clone().addScaledVector(n, 1.48).addScaledVector(tangent, 1.08).addScaledVector(bitan, 0.52);
+          look.copy(hit).multiplyScalar(0.97);
+        } else if (mode === 'wide') {
+          pos = n.clone().multiplyScalar(9.4).addScaledVector(tangent, 2.5).addScaledVector(bitan, 1.5);
+        } else if (mode === 'cinematic') {
+          const u = clamp01(t / 12.4);
+          const far = n.clone().multiplyScalar(10.8).addScaledVector(tangent, 3.6).add(new THREE.Vector3(0, 1.7, 0));
+          // hold a stable near rig through contact so Earth doesn't "jump away"
+          const near = hit.clone().addScaledVector(n, 1.95).addScaledVector(tangent, 1.48).addScaledVector(bitan, 0.55);
+          const contact = hit.clone().addScaledVector(n, 1.72).addScaledVector(tangent, 1.28).addScaledVector(bitan, 0.48);
+          const pullback = n.clone().multiplyScalar(8.9).addScaledVector(tangent, 2.4).addScaledVector(bitan, 1.4);
+          pos = far.clone().lerp(near, ease(Math.min(1, u * 1.05)));
+          if (t >= 12.2) {
+            const hold = ease(clamp01((t - 12.2) / 1.1));
+            pos.lerp(contact, hold * 0.85);
+            look.copy(hit).multiplyScalar(0.96);
+          }
+          if (t > 15.8) pos.lerp(pullback, ease(clamp01((t - 15.8) / 8)));
+          if (t < 12.35) look.lerp(rock, 0.28 * (1 - clamp01((t - 11.0) / 1.35)));
+        } else {
+          pos = hit.clone().addScaledVector(n, 2.32).addScaledVector(tangent, 2.08).addScaledVector(bitan, 0.82);
+          look.copy(hit).multiplyScalar(0.9);
+        }
+        return { pos, look };
+      }
+
+      function applyCamera(mode, t, hit, rock, snap) {
+        if (mode === 'free') {
+          controls.autoRotate = true;
+          if (!camLockEl.checked) controls.target.set(0, 0, 0);
+          else if (snap) controls.target.copy(hit).multiplyScalar(0.2);
+          return;
+        }
+        controls.autoRotate = false;
+        const rig = cameraRig(mode, t, hit, rock);
+        if (snap) {
+          camera.position.copy(rig.pos);
+          controls.target.copy(rig.look);
+        } else {
+          camera.position.lerp(rig.pos, 0.036);
+          controls.target.lerp(rig.look, 0.04);
+        }
+        camera.position.add(shake);
+      }
+
+      function snapCamera() {
+        if (!playing) {
+          const hit0 = worldImpact();
+          camera.position.copy(holdCam);
+          controls.target.copy(hit0.clone().multiplyScalar(0.92));
+          return;
+        }
+        applyCamera(camModeEl.value, simTime, worldImpact(), asteroid.position, true);
+      }
+      document.getElementById('cam-set').addEventListener('click', snapCamera);
+      document.getElementById('cam-reset').addEventListener('click', () => {
+        camModeEl.value = 'cinematic';
+        camLockEl.checked = true;
+        if (!playing) snapCamera();
+        else {
+          camera.position.set(0.6, 1.8, 8.4);
+          controls.target.set(0, 0, 0);
+        }
+      });
+      camModeEl.addEventListener('change', snapCamera);
+      snapCamera();
+
+      function worldImpact() {
+        return impactPoint.clone().applyEuler(earthGroup.rotation);
+      }
+
+      function pinFxToImpact(hit) {
+        const p = hit.clone().project(camera);
+        const x = THREE.MathUtils.clamp((p.x * 0.5 + 0.5) * 100, -8, 108);
+        const y = THREE.MathUtils.clamp((-p.y * 0.5 + 0.5) * 100, -8, 108);
+        hud.flash.style.setProperty('--fx', x.toFixed(1) + '%');
+        hud.flash.style.setProperty('--fy', y.toFixed(1) + '%');
+        hud.heat.style.setProperty('--fx', x.toFixed(1) + '%');
+        hud.heat.style.setProperty('--fy', y.toFixed(1) + '%');
+      }
+
+      function asteroidPath(u) {
+        const site = worldImpact();
+        const n = site.clone().normalize();
+        // contact is the rock's leading face, not its center buried in the crust
+        const to = n.clone().multiplyScalar(EARTH_R + ASTEROID_R * 0.35);
+        const inbound = n.clone().multiplyScalar(0.72).add(new THREE.Vector3(0.52, 0.18, -0.28)).normalize();
+        const from = to.clone().addScaledVector(inbound, 15.6);
+        return from.lerp(to, u);
+      }
+
+      function currentPhase(t) {
+        for (let i = PHASES.length - 1; i >= 0; i--) if (t >= PHASES[i].t0) return PHASES[i];
+        return PHASES[0];
+      }
+
+      function emitTail(origin, dir, alive, heat) {
+        const h = heat || 0;
+        for (let i = 0; i < TAIL; i++) {
+          if (tailLife[i] <= 0 && alive && Math.random() < 0.42 + h * 0.55) {
+            tailLife[i] = 1;
+            const spread = 0.055 + h * 0.12;
+            tailPos[i * 3] = origin.x + (Math.random() - 0.5) * spread;
+            tailPos[i * 3 + 1] = origin.y + (Math.random() - 0.5) * spread;
+            tailPos[i * 3 + 2] = origin.z + (Math.random() - 0.5) * spread;
+            const hot = Math.random();
+            if (hot < 0.25 * h) {
+              tailCol[i * 3] = 0.55 + hot * 0.4;
+              tailCol[i * 3 + 1] = 0.75 + hot * 0.25;
+              tailCol[i * 3 + 2] = 1.0;
+            } else {
+              tailCol[i * 3] = 1;
+              tailCol[i * 3 + 1] = 0.28 + hot * 0.55;
+              tailCol[i * 3 + 2] = 0.05 + hot * 0.18;
+            }
+          }
+          if (tailLife[i] > 0) {
+            tailLife[i] -= 0.014 + Math.random() * 0.012;
+            const drift = 0.028 + h * 0.02;
+            tailPos[i * 3] += dir.x * drift + (Math.random() - 0.5) * 0.012;
+            tailPos[i * 3 + 1] += dir.y * drift + (Math.random() - 0.5) * 0.012;
+            tailPos[i * 3 + 2] += dir.z * drift + (Math.random() - 0.5) * 0.012;
+            if (tailLife[i] < 0.4) {
+              tailCol[i * 3] *= 0.97;
+              tailCol[i * 3 + 1] *= 0.93;
+              tailCol[i * 3 + 2] *= 0.91;
+            }
+          } else {
+            tailPos[i * 3] = tailPos[i * 3 + 1] = tailPos[i * 3 + 2] = 80;
+          }
+        }
+        tailGeo.attributes.position.needsUpdate = true;
+        tailGeo.attributes.color.needsUpdate = true;
+        tail.material.size = 0.038 + h * 0.07;
+      }
+
+      function formatAlt(km) {
+        if (km > 1e5) return (km / 1e6).toFixed(2) + '×10⁶ km';
+        if (km > 1e3) return Math.round(km).toLocaleString() + ' km';
+        return km.toFixed(0) + ' km';
+      }
+
+      function tick(now) {
+        const realDt = Math.min(0.05, lastDebris ? (now - lastDebris) / 1000 : 0.016);
+        lastDebris = now;
+        if (!reduceMotion && now - grainClock > 140) { paintGrain(); grainClock = now; }
+
+        if (!playing) {
+          earthGroup.rotation.y += 0.00022;
+          fogLayer.rotation.y += 0.0001;
+          clouds.rotation.y += 0.0002;
+          highClouds.rotation.y -= 0.00008;
+          nights.material.opacity = 0.2 + 0.7 * (0.5 + 0.5 * Math.sin(earthGroup.rotation.y + 0.8));
+          atmo.material.uniforms.sunDir.value.copy(sun.position).normalize();
+          // evaluate hit AFTER rotation so camera tracks the site, not last frame's site
+          const idleLook = worldImpact().multiplyScalar(0.92);
+          camera.position.lerp(holdCam, 0.045);
+          controls.target.lerp(idleLook, 0.045);
+          controls.autoRotate = false;
+          controls.update();
+          renderer.render(scene, camera);
+          requestAnimationFrame(tick);
+          return;
+        }
+
+        if (introT < 2.4) {
+          introT += realDt;
+          if (introT > 1.15 && !frameOpen) {
+            frameOpen = true;
+            document.body.classList.add('is-open');
+          }
+        }
+
+        const lookAhead = simTime;
+        let timeScale = introT < 1.8 ? THREE.MathUtils.lerp(0.35, 1, ease(clamp01(introT / 1.8))) : 1;
+        if (lookAhead > 12.15 && lookAhead < 13.55) timeScale = THREE.MathUtils.lerp(1, 0.22, ease(clamp01((lookAhead - 12.15) / 0.28)));
+        if (lookAhead >= 13.55 && lookAhead < 15.2) timeScale = THREE.MathUtils.lerp(0.22, 1, ease(clamp01((lookAhead - 13.55) / 1.6)));
+        simTime += realDt * timeScale;
+        const t = simTime;
+        const dt = realDt * timeScale;
+        const phase = currentPhase(t);
+        const total = clamp01(t / PHASES[PHASES.length - 1].t1);
+
+        // rotate Earth first, then derive a single shared impact site for camera/rock/fx
+        earthGroup.rotation.y += 0.00055;
+        fogLayer.rotation.y += 0.00018;
+        clouds.rotation.y += 0.00042;
+        highClouds.rotation.y -= 0.00018;
+        asteroid.rotation.x += 0.03;
+        asteroid.rotation.y += 0.02;
+        const hit = worldImpact();
+
+        const approachU = clamp01(t / 12.4);
+        const posA = asteroidPath(approachU);
+        const nextA = asteroidPath(Math.min(1, approachU + 0.004));
+        const vel = nextA.clone().sub(posA);
+        if (vel.lengthSq() > 1e-8) vel.normalize();
+        else vel.copy(hit).normalize().negate();
+        asteroid.position.copy(posA);
+        if (asteroid.visible) {
+          const heat = clamp01((approachU - 0.18) / 0.82);
+          const entry = clamp01((approachU - 0.62) / 0.38);
+          const flicker = 0.88 + 0.12 * Math.sin(t * 37.0) + 0.06 * Math.sin(t * 71.0);
+          // kill glow well before contact so the mesh never intersects Earth
+          const contactFade = 1 - clamp01((approachU - 0.78) / 0.14);
+          fireCore.material.opacity = (0.18 + heat * 0.55 + entry * 0.28) * flicker * contactFade;
+          fireShell.material.opacity = (0.08 + heat * 0.32 + entry * 0.28) * flicker * contactFade;
+          fireHalo.material.opacity = 0;
+          fireHalo.visible = false;
+          plasmaShell.material.opacity = entry * 0.22 * flicker * contactFade;
+          plasmaHalo.material.opacity = 0;
+          plasmaHalo.visible = false;
+          fireCore.visible = contactFade > 0.02;
+          fireShell.visible = contactFade > 0.02;
+          plasmaShell.visible = contactFade > 0.02;
+          const pulse = 1 + entry * 0.12 + Math.sin(t * 28.0) * entry * 0.03;
+          fireCore.scale.setScalar(ASTEROID_R * 1.42 * pulse);
+          fireShell.scale.setScalar(ASTEROID_R * 2.05 * pulse);
+          plasmaShell.scale.setScalar(ASTEROID_R * 1.68 * pulse);
+          heatLight.intensity = 0.55 + heat * 3.2 + entry * 6.5;
+          asteroid.material.emissiveIntensity = 0.28 + heat * 1.25 + entry * 2.1;
+          asteroid.scale.setScalar(1 + entry * 0.04 + Math.sin(t * 40) * entry * 0.015);
+        } else {
+          fireCore.material.opacity = 0;
+          fireShell.material.opacity = 0;
+          fireHalo.material.opacity = 0;
+          plasmaShell.material.opacity = 0;
+          plasmaHalo.material.opacity = 0;
+          fireCore.visible = false;
+          fireShell.visible = false;
+          plasmaShell.visible = false;
+        }
+
+        const altKm = THREE.MathUtils.lerp(1.2e6, 0, approachU);
+        const spd = approachU >= 1 ? 0 : THREE.MathUtils.lerp(20.4, 19.6, approachU);
+        hud.speed.textContent = spd.toFixed(1) + ' km/s';
+        hud.alt.textContent = approachU >= 1 ? '0 km' : formatAlt(altKm);
+
+        const tailAlive = asteroid.visible && t < 11.9;
+        emitTail(posA, vel.clone().multiplyScalar(-1), tailAlive, clamp01((approachU - 0.55) / 0.45));
+        tail.visible = tailAlive;
+
+        atmo.material.uniforms.sunDir.value.copy(sun.position).normalize();
+
+        const nrm = hit.clone().normalize();
+        atmo.material.uniforms.impactDir.value.copy(nrm);
+        const rockPal = [
+          [0.48, 0.36, 0.24], [0.32, 0.24, 0.17], [0.58, 0.42, 0.26],
+          [0.22, 0.17, 0.12], [0.40, 0.30, 0.20], [0.62, 0.50, 0.34]
+        ];
+        const smokePal = [
+          [0.48, 0.44, 0.40], [0.34, 0.31, 0.28], [0.58, 0.54, 0.50],
+          [0.26, 0.23, 0.20], [0.40, 0.37, 0.33], [0.20, 0.18, 0.16]
+        ];
+        const sootPal = [
+          [0.14, 0.12, 0.10], [0.20, 0.16, 0.13], [0.09, 0.08, 0.07],
+          [0.24, 0.19, 0.15], [0.12, 0.10, 0.09], [0.17, 0.14, 0.11]
+        ];
+        const mistPal = [
+          [0.62, 0.58, 0.54], [0.46, 0.43, 0.40], [0.54, 0.51, 0.48],
+          [0.36, 0.34, 0.31], [0.50, 0.47, 0.44]
+        ];
+
+        const impactAge = t >= 12.4 ? t - 12.4 : -1;
+        if (t >= 12.4 && flashPeak === 0) flashPeak = 1;
+        if (impactAge >= 0) {
+          const ft = impactAge;
+          // smooth rise then long soft decay — no hard tier edges
+          const rise = ft < 0.22 ? ease(ft / 0.22) : 1;
+          const decay = ft < 0.22 ? 1 : Math.exp(-(ft - 0.22) * 0.55);
+          const pulse = rise * decay;
+          const longGlow = Math.exp(-ft * 0.28);
+
+          hud.flash.style.opacity = String(Math.min(0.46, (ft < 0.2 ? ease(ft / 0.05) * (1 - ft / 0.26) : 0)));
+          hud.heat.style.opacity = '0';
+
+          // local ember wash around the crater — not a white lid over the site
+          const melt = Math.exp(-ft * 0.18);
+          impactBloom.material.uniforms.bloomR.value = 0.04 + ease(clamp01(ft / 0.85)) * 0.16;
+          impactBloom.material.uniforms.bloomA.value = Math.min(0.62, pulse * 0.72 + melt * 0.16) * Math.exp(-ft * 0.32);
+
+          flashOrb.intensity = pulse * 36 + melt * 7;
+          fillOrb.intensity = pulse * 22 + melt * 5;
+          craterLight.intensity = 2.2 + pulse * 7.5 + melt * 3.2;
+          atmo.material.uniforms.impactGlow.value = pulse * 1.35 + melt * 0.32;
+
+          // exposure pop then settle
+          renderer.toneMappingExposure = THREE.MathUtils.lerp(1.05, 1.72, Math.min(1, pulse * 0.98)) * (0.9 + longGlow * 0.22);
+
+          // soft impact jolt — enough punch without shoving Earth out of frame
+          const shakeAmt = reduceMotion ? 0 : (ft < 1.8 ? (1 - ft / 1.8) * 0.048 : (ft < 5 ? (1 - (ft - 1.8) / 3.2) * 0.014 : 0));
+          if (shakeAmt > 0) {
+            shake.set((Math.random() - 0.5) * shakeAmt, (Math.random() - 0.5) * shakeAmt * 0.65, (Math.random() - 0.5) * shakeAmt * 0.55);
+          } else {
+            shake.set(0, 0, 0);
+          }
+          const fovKick = reduceMotion ? 0 : (ft < 0.9 ? (1 - ft / 0.9) * 2.2 : 0);
+          camera.fov = 42 + shakeAmt * 10 + fovKick;
+          camera.updateProjectionMatrix();
+          asteroid.visible = false;
+          if (ft > 8.5) hud.flash.style.opacity = 0;
+          if (debrisBurst === 0) {
+            debrisBurst = 1;
+            spawnBurst(ejecta, impactPoint, impactNormal, 980, 3.6, 2.25, 6.4, rockPal, false);
+            spawnBurst(ejecta, impactPoint, impactNormal, 620, 4.8, 1.05, 4.6, rockPal, true);
+            spawnBurst(smoke, impactPoint, impactNormal, 1400, 1.15, 0.95, 22, smokePal, true);
+            spawnBurst(smoke, impactPoint, impactNormal, 1100, 0.62, 1.55, 26, smokePal, true);
+            spawnBurst(smoke, impactPoint, impactNormal, 760, 0.28, 2.15, 28, smokePal, false);
+            spawnBurst(soot, impactPoint, impactNormal, 1100, 0.78, 1.75, 24, sootPal, true);
+            spawnBurst(soot, impactPoint, impactNormal, 780, 0.36, 2.45, 28, sootPal, true);
+            spawnBurst(mistFine, impactPoint, impactNormal, 860, 0.52, 1.7, 20, mistPal, true);
+            spawnBurst(mistFine, impactPoint, impactNormal, 620, 0.24, 2.35, 24, mistPal, false);
+          }
+          craterGroup.visible = true;
+          const grow = ease(clamp01(ft / 1.15));
+          craterGroup.scale.setScalar(0.38 + grow * 0.98);
+          const cool = clamp01((ft - 1.6) / 10);
+          craterFloor.material.emissive.setRGB(
+            THREE.MathUtils.lerp(1.0, 0.55, cool),
+            THREE.MathUtils.lerp(0.48, 0.12, cool),
+            THREE.MathUtils.lerp(0.12, 0.03, cool)
+          );
+          craterFloor.material.emissiveIntensity = 1.15 + pulse * 3.4 + melt * 1.5 - cool * 0.55;
+          meltPool.material.opacity = Math.min(0.82, 0.22 + pulse * 0.52 + melt * 0.28) * (1 - cool * 0.55);
+          meltHalo.material.opacity = Math.min(0.62, 0.14 + pulse * 0.38 + melt * 0.2) * (1 - cool * 0.48);
+          meltOuter.material.opacity = Math.min(0.4, 0.08 + pulse * 0.22 + melt * 0.14) * (1 - cool * 0.4);
+          ejectaFan.material.opacity = Math.min(0.72, ease(clamp01(ft / 1.25)) * 0.66);
+          boulders.forEach((b, i) => {
+            b.material.emissiveIntensity = (0.35 + melt * 1.4) * (1 - cool * 0.6) * (0.55 + (i % 3) * 0.2);
+          });
+          nights.material.opacity = THREE.MathUtils.lerp(0.85, 0.08, Math.min(1, pulse * 0.85 + melt * 0.7));
+        } else {
+          shake.set(0, 0, 0);
+          if (camera.fov !== 42) {
+            camera.fov = 42;
+            camera.updateProjectionMatrix();
+          }
+          hud.heat.style.opacity = '0';
+          nights.material.opacity = 0.2 + 0.7 * (0.5 + 0.5 * Math.sin(earthGroup.rotation.y + 0.8));
+        }
+
+        if (t >= 12.42 && t < 28) {
+          const rate = t < 14.5 ? 0.95 : (t < 18 ? 0.78 : 0.52);
+          if (Math.random() < rate) {
+            spawnBurst(smoke, impactPoint, impactNormal, 86, 0.2 + Math.random() * 0.28, 1.25, 24, smokePal, true);
+            spawnBurst(mistFine, impactPoint, impactNormal, 64, 0.12 + Math.random() * 0.2, 1.7, 22, mistPal, true);
+            spawnBurst(soot, impactPoint, impactNormal, 58, 0.14 + Math.random() * 0.22, 2.25, 26, sootPal, true);
+          }
+          if (t > 14.8 && Math.random() < 0.72) {
+            const high = impactPoint.clone().addScaledVector(impactNormal, 0.45 + Math.random() * 1.15);
+            spawnBurst(smoke, high, impactNormal, 38, 0.08 + Math.random() * 0.14, 1.95, 18, smokePal, false);
+            spawnBurst(mistFine, high, impactNormal, 30, 0.07 + Math.random() * 0.1, 2.15, 16, mistPal, false);
+            spawnBurst(soot, high, impactNormal, 24, 0.07 + Math.random() * 0.12, 2.35, 20, sootPal, false);
+          }
+          if (t < 16.4 && Math.random() < 0.8) {
+            spawnBurst(ejecta, impactPoint, impactNormal, 28, 1.35 + Math.random() * 1.35, 2.1, 4.2, rockPal, false);
+            spawnBurst(ejecta, impactPoint, impactNormal, 16, 2.65, 0.85, 3.2, rockPal, true);
+          }
+        }
+
+        stepDebris(ejecta, dt, 0.981, -0.68, EARTH_R + 0.06, 0, 0.012);
+        stepDebris(smoke, dt, 0.996, -0.01, EARTH_R + 0.28, 0.055, 0.05);
+        stepDebris(soot, dt, 0.997, -0.006, EARTH_R + 0.30, 0.038, 0.06);
+        stepDebris(mistFine, dt, 0.998, 0.002, EARTH_R + 0.26, 0.042, 0.055);
+
+        const after = clamp01((t - 12.4) / 22);
+        ejecta.mat.uniforms.uOpacity.value = t > 12.4 ? THREE.MathUtils.lerp(1.0, 0.14, clamp01((t - 12.4) / 7.2)) : 0;
+        smoke.mat.uniforms.uOpacity.value = t > 12.4 ? THREE.MathUtils.lerp(0.88, 0.46, after) : 0;
+        soot.mat.uniforms.uOpacity.value = t > 12.4 ? THREE.MathUtils.lerp(0.92, 0.5, after) : 0;
+        mistFine.mat.uniforms.uOpacity.value = t > 12.4 ? THREE.MathUtils.lerp(0.68, 0.32, after) : 0;
+
+        if (t >= 12.55) {
+          const gf = clamp01((t - 12.55) / 8);
+          groundFog.material.uniforms.fogR.value = 0.16 + ease(gf) * 1.05;
+          groundFog.material.uniforms.fogA.value = (0.32 + gf * 0.48) * (1 - clamp01((t - 24) / 12) * 0.4);
+          groundFog.material.uniforms.time.value = t;
+        }
+
+        if (t >= 12.4) {
+          const burn = clamp01((t - 12.4) / 5.6);
+          scorch.material.uniforms.scorchR.value = 0.08 + ease(burn) * 0.72;
+          scorch.material.uniforms.scorchA.value = 0.62 + burn * 0.24;
+        }
+
+        if (t >= 13.6) {
+          const tw = clamp01((t - 13.6) / 8.5);
+          tsunami.material.uniforms.waveR.value = tw * 2.7;
+          tsunami.material.uniforms.waveA.value = (1 - tw) * 0.42;
+        }
+
+        if (t >= 14.2) {
+          const sw = clamp01((t - 14.2) / 6.4);
+          shock.visible = true;
+          shock.material.uniforms.waveR.value = sw * 3.15;
+          shock.material.uniforms.waveW.value = 0.055 + sw * 0.07;
+          shock.material.uniforms.waveA.value = (1 - sw) * 1.15;
+        }
+
+        if (t >= 16.8) {
+          const winter = clamp01((t - 16.8) / 11.2);
+          dust.material.uniforms.dustR.value = winter * Math.PI;
+          dust.material.uniforms.dustOpacity.value = THREE.MathUtils.lerp(0.0, 1.45, winter);
+          dust.material.uniforms.time.value = t;
+          fogLayer.material.opacity = THREE.MathUtils.lerp(0.3, 0.08, winter);
+          clouds.material.opacity = THREE.MathUtils.lerp(0.68, 0.16, winter);
+          highClouds.material.opacity = THREE.MathUtils.lerp(0.34, 0.05, winter);
+          haze.material.uniforms.hazeA.value = THREE.MathUtils.lerp(0.08, 0.18, winter);
+          haze.material.uniforms.hazeColor.value.lerpColors(new THREE.Color(0xa8d8ff), new THREE.Color(0x4a3828), winter);
+          nights.material.opacity = THREE.MathUtils.lerp(0.85, 0.05, winter);
+          clouds.material.color.lerpColors(new THREE.Color(0xffffff), new THREE.Color(0x3a3028), winter);
+          highClouds.material.color.lerpColors(new THREE.Color(0xf4f7ff), new THREE.Color(0x2a221c), winter);
+          fogLayer.material.color.lerpColors(new THREE.Color(0xd8e4ee), new THREE.Color(0x241c16), winter);
+          sun.intensity = THREE.MathUtils.lerp(1.85, 0.1, winter);
+          ambient.intensity = THREE.MathUtils.lerp(0.16, 0.05, winter);
+          hemi.intensity = THREE.MathUtils.lerp(0.32, 0.08, winter);
+          renderer.toneMappingExposure = THREE.MathUtils.lerp(1.05, 0.3, winter);
+          atmo.material.uniforms.glowColor.value.lerpColors(new THREE.Color(0x6eb8ff), new THREE.Color(0x3a2818), winter);
+          atmo.material.uniforms.intensity.value = THREE.MathUtils.lerp(1.0, 0.25, winter);
+          controls.autoRotateSpeed = 0.18 + winter * 0.12;
+          hud.dust.textContent = Math.round(winter * 100) + '%';
+        } else {
+          dust.material.uniforms.dustR.value = 0;
+          dust.material.uniforms.dustOpacity.value = 0;
+          fogLayer.material.opacity = 0.3;
+          fogLayer.material.color.set(0xd8e4ee);
+          clouds.material.opacity = 0.68;
+          clouds.material.color.set(0xffffff);
+          highClouds.material.opacity = 0.34;
+          highClouds.material.color.set(0xf4f7ff);
+          haze.material.uniforms.hazeA.value = 0.08;
+          haze.material.uniforms.hazeColor.value.set(0xa8d8ff);
+          sun.intensity = 1.85;
+          ambient.intensity = 0.16;
+          hemi.intensity = 0.32;
+          if (t < 12.4) renderer.toneMappingExposure = 1.05;
+          atmo.material.uniforms.glowColor.value.set(0x6eb8ff);
+          atmo.material.uniforms.intensity.value = 1.0;
+          controls.autoRotateSpeed = 0.18;
+          hud.dust.textContent = '0%';
+        }
+
+        if (phase.id !== lastPhase) {
+          lastPhase = phase.id;
+          hud.phase.textContent = phase.hud;
+          hud.name.textContent = phase.name;
+          hud.copy.textContent = phase.copy;
+        }
+        hud.progress.style.width = (total * 100).toFixed(1) + '%';
+
+        if (introT < 2.2) {
+          const u = ease(clamp01(introT / 2.2));
+          const rig = cameraRig(camModeEl.value === 'free' ? 'cinematic' : camModeEl.value, t, hit, posA);
+          camera.position.lerpVectors(holdCam, rig.pos, u);
+          controls.target.lerpVectors(hit.clone().multiplyScalar(0.92), rig.look, u);
+          controls.autoRotate = false;
+        } else {
+          applyCamera(camModeEl.value, t, hit, posA, false);
+        }
+        controls.update();
+        if (t >= 12.4) pinFxToImpact(hit);
+        renderer.render(scene, camera);
+        requestAnimationFrame(tick);
+      }
+      requestAnimationFrame(tick);
+
+      window.addEventListener('resize', () => {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        sizeGrain();
+      });
+    })();
+  </script>
+</body>
+</html>
