@@ -504,15 +504,24 @@
       }
 
       function landMask(nx, ny) {
-        // two-scale warp: large bays + high-frequency fjords/inlets so coasts aren't boxes
+        // three-scale warp: large bays, mid fjords/inlets, fine peninsulas — keeps coasts organic, not boxes
         const w1 = warpUV(nx, ny, 3.2, 0.062);
         const w2 = warpUV(w1[0], w1[1], 11.5, 0.018);
-        const base = blobField(w2[0], w2[1], CRET_BLOBS);
-        const n = fbm(w2[0] * 9.4, w2[1] * 17.2);
-        const nMid = fbm(w2[0] * 28 + 2.4, w2[1] * 48 + 1.1);
-        const nFine = noise2(w2[0] * 86, w2[1] * 140);
-        const nJag = noise2(w2[0] * 190 + 7.3, w2[1] * 310 + 4.8);
-        return base + (n - 0.5) * 0.46 + (nMid - 0.5) * 0.16 + (nFine - 0.5) * 0.07 + (nJag - 0.5) * 0.028;
+        const w3 = warpUV(w2[0], w2[1], 27, 0.009);
+        const base = blobField(w3[0], w3[1], CRET_BLOBS);
+        const n = fbm(w3[0] * 9.4, w3[1] * 17.2);
+        const nMid = fbm(w3[0] * 28 + 2.4, w3[1] * 48 + 1.1);
+        const nFine = noise2(w3[0] * 86, w3[1] * 140);
+        const nJag = noise2(w3[0] * 190 + 7.3, w3[1] * 310 + 4.8);
+        let val = base + (n - 0.5) * 0.46 + (nMid - 0.5) * 0.18 + (nFine - 0.5) * 0.085 + (nJag - 0.5) * 0.034;
+        // scattered arc islands near coastal margins, like real continental-shelf archipelagos
+        const marginDist = Math.abs(val);
+        if (marginDist < 0.14) {
+          const isl = noise2(w3[0] * 210 + 12.4, w3[1] * 210 + 5.6) * 0.6
+            + noise2(w3[0] * 430 - 3.1, w3[1] * 430 + 8.8) * 0.4;
+          val += Math.max(0, isl - 0.74) * (1 - marginDist / 0.14) * 1.4;
+        }
+        return val;
       }
 
       function mountainField(nx, ny) {
@@ -897,9 +906,26 @@
               G = (hot * hot * 160 + vein * 70);
               B = hot * hot * hot * 70;
               A = Math.min(255, (hot * 240 + vein * 180) * rimFade);
+            } else if (mode === 'rough') {
+              // glassy melt near the center (low roughness), rough broken breccia
+              // further out — sells the "still hot / still glassy" ground feel
+              let v;
+              if (r < 0.2) {
+                v = 26 + n * 16 + (crack > 0.75 ? 46 : 0);
+              } else if (r < 0.42) {
+                const t = (r - 0.2) / 0.22;
+                v = 26 + t * 160 + n2 * 20;
+              } else {
+                v = 195 + n * 40 + n3 * 20 - (crack > 0.8 ? 70 : 0);
+              }
+              v = v < 0 ? 0 : v > 255 ? 255 : v;
+              R = G = B = v; A = 255;
             } else {
               if (r < 0.2) {
                 R = 210; G = 118 - r * 90; B = 42 - r * 80;
+                // glassy sheen streaks — cooled impact glass, not matte rock
+                const glass = crack > 0.78 ? (crack - 0.78) / 0.22 : 0;
+                R += glass * 42; G += glass * 58; B += glass * 74;
               } else if (r < 0.42) {
                 const t = (r - 0.2) / 0.22;
                 R = 168 - t * 70; G = 72 - t * 32; B = 28 - t * 8;
@@ -909,6 +935,13 @@
                 R = 52 + n * 22 - ray * 12; G = 36 + n * 14; B = 24 + n * 8;
               }
               if (crack > 0.8 && r < 0.68) { R = 210; G = 110; B = 36; }
+              if (r > 0.36) {
+                // breccia/rubble clasts — fine grain speckle so the rim and
+                // ejecta blanket read as broken rock, not a smooth painted ring
+                const clast = noise2(dx * 130 + 3.3, dy * 130 + 7.1);
+                const speck = (clast - 0.5) * 30;
+                R += speck; G += speck * 0.82; B += speck * 0.6;
+              }
               A = rimFade * 255;
             }
             d[i] = R; d[i + 1] = G; d[i + 2] = B; d[i + 3] = A;
@@ -918,6 +951,7 @@
       }
       const craterMap = canvasTex((ctx, w, h) => paintCraterMap(ctx, w, h, 'albedo'), 384, 384);
       const craterEmit = canvasTex((ctx, w, h) => paintCraterMap(ctx, w, h, 'emit'), 384, 384);
+      const craterRough = canvasTex((ctx, w, h) => paintCraterMap(ctx, w, h, 'rough'), 384, 384);
 
       const craterGroup = new THREE.Group();
       craterGroup.position.copy(impactPoint.clone().multiplyScalar(1.0018));
@@ -961,9 +995,13 @@
       const craterFloor = new THREE.Mesh(
         craterGeo,
         new THREE.MeshStandardMaterial({
-          map: craterMap, emissiveMap: craterEmit, vertexColors: true,
-          transparent: true, alphaTest: 0.06, depthWrite: false,
-          roughness: 0.68, metalness: 0.12,
+          map: craterMap, emissiveMap: craterEmit, roughnessMap: craterRough, vertexColors: true,
+          // depthWrite must stay on: this mesh is what boulders rest against —
+          // without it writing depth, nothing drawn after it (the boulders'
+          // buried lower half especially) gets occluded, so rock reads as
+          // floating on top of the ground instead of sitting embedded in it
+          transparent: true, alphaTest: 0.06, depthWrite: true,
+          roughness: 0.9, metalness: 0.12,
           emissive: 0xff6a18, emissiveIntensity: 0
         })
       );
@@ -1014,9 +1052,11 @@
             const blanket = Math.max(0, 1 - r / 0.92) * (0.35 + n * 0.55);
             const cover = Math.min(1, blanket + ray * (0.25 + r * 0.7));
             const ash = 0.12 + n * 0.08;
-            d[i] = (28 + n * 22 + ray * 18);
-            d[i + 1] = (18 + n * 12 + ray * 8);
-            d[i + 2] = (12 + n * 6);
+            const clast = noise2(dx * 110 + 5.4, dy * 110 + 2.6);
+            const speck = clast > 0.72 ? (clast - 0.72) / 0.28 * cover * 26 : 0;
+            d[i] = (28 + n * 22 + ray * 18 + speck);
+            d[i + 1] = (18 + n * 12 + ray * 8 + speck * 0.8);
+            d[i + 2] = (12 + n * 6 + speck * 0.5);
             const fade = r > 0.42 ? Math.max(0, 1 - (r - 0.42) / 0.5) : 1;
             d[i + 3] = cover * 180 * fade;
           }
@@ -1032,20 +1072,109 @@
       );
       ejectaFan.position.z = -0.004;
       craterGroup.add(ejectaFan);
-      const boulderGeo = new THREE.IcosahedronGeometry(0.018, 1);
       const boulderMat = new THREE.MeshStandardMaterial({
         color: 0x2c2218, roughness: 0.96, metalness: 0.08, flatShading: true,
-        emissive: 0x4a1808, emissiveIntensity: 0
+        emissive: 0x4a1808, emissiveIntensity: 0,
+        transparent: true, opacity: 0
       });
+      // boulders live in their own group so they can counter-scale against
+      // craterGroup's excavation pop — otherwise every rock visibly slides
+      // outward from the impact point as the crater grows, instead of just appearing
+      const boulderGroup = new THREE.Group();
+      craterGroup.add(boulderGroup);
+      // craterGroup's local x/y is a FLAT tangent plane at the impact point.
+      // That's a fine approximation right at the crater, but boulders scattered
+      // out on the ejecta blanket sit far enough from the tangent point that
+      // the sphere curves away underneath them — a flat offset there measurably
+      // overshoots the real surface height (quadratically with distance), which
+      // is exactly what made distant rocks appear to float above the horizon.
+      // This re-derives (x,y) as an arc-length distance along the sphere and
+      // returns the true flat-frame coordinates of that point, so `z` stays a
+      // small height-above-ground instead of ballooning into a false altitude.
+      function sphereWrap(x, y, z) {
+        const L = Math.sqrt(x * x + y * y);
+        if (L < 1e-6) return [x, y, z];
+        const theta = L / EARTH_R;
+        const mag = EARTH_R * Math.sin(theta);
+        return [x / L * mag, y / L * mag, z + EARTH_R * (Math.cos(theta) - 1)];
+      }
+      // ground height at (x,y) in crater-local units, mirrors the craterGeo bowl/rim
+      // profile above so boulders sit on the terrain instead of floating on a flat plane
+      function craterHeight(x, y) {
+        const r = Math.sqrt(x * x + y * y);
+        const ang = Math.atan2(y, x);
+        const n = Math.sin(ang * 5.0 + 0.4) * 0.22 + Math.sin(ang * 11.0 + 1.7) * 0.12
+          + Math.sin(x * 38 + y * 27) * 0.1 + Math.sin(x * 71 - y * 53) * 0.05;
+        const rn = Math.min(r / CRATER_R, 1.15);
+        if (rn < 0.16) return -0.055 * (1 - rn / 0.16) * (1.08 + n * 0.12);
+        if (rn < 0.3) { const pk = (rn - 0.16) / 0.14; return -0.022 + 0.028 * Math.sin(pk * Math.PI) * (0.82 + n * 0.4); }
+        if (rn < 0.56) { const bowl = 1 - (rn - 0.3) / 0.26; return -0.038 * bowl * bowl * (1.05 + n * 0.2); }
+        if (rn < 0.8) { const rimT = (rn - 0.56) / 0.24; return 0.022 * Math.sin(rimT * Math.PI) * (0.72 + n * 0.4); }
+        if (rn < 1.0) return 0.004 * (1 - (rn - 0.8) / 0.2) * (0.55 + n * 0.5);
+        return 0.004 * (0.55 + n * 0.5) * (1 - (rn - 1.0) / 0.15);
+      }
+      // each boulder gets its own irregular hull instead of a shared scaled icosahedron —
+      // repeated identical rocks read as fake in close-up shots
+      function makeBoulderGeo(seed, size) {
+        const geo = new THREE.IcosahedronGeometry(size, 1);
+        const gp = geo.attributes.position;
+        for (let i = 0; i < gp.count; i++) {
+          const v = new THREE.Vector3().fromBufferAttribute(gp, i);
+          const nrm = v.clone().normalize();
+          // crag noise must run on the unit-length normal, not raw vertex coords —
+          // those scale with the boulder's tiny size (~0.006-0.018), which drowns
+          // out these frequencies and leaves an almost-undeformed sphere
+          const crag = Math.sin(nrm.x * 7.4 + seed) * 0.19 + Math.cos(nrm.y * 6.1 - seed * 1.7) * 0.16
+            + Math.sin(nrm.z * 9.2 + seed * 2.3) * 0.12 + Math.sin((nrm.x + nrm.y) * 5.3 + seed * 0.6) * 0.09;
+          v.copy(nrm.multiplyScalar(size * (0.74 + crag)));
+          gp.setXYZ(i, v.x, v.y, v.z);
+        }
+        geo.computeVertexNormals();
+        return geo;
+      }
       const boulders = [];
-      for (let i = 0; i < 22; i++) {
-        const rock = new THREE.Mesh(boulderGeo, boulderMat.clone());
-        const ang = (i * 2.17) + (i % 5) * 0.33;
-        const rad = CRATER_R * (0.18 + ((i * 17) % 11) * 0.028 + (i % 4) * 0.04);
-        rock.position.set(Math.cos(ang) * rad, Math.sin(ang) * rad, 0.008 + (i % 5) * 0.003);
-        rock.scale.setScalar(0.55 + (i % 6) * 0.22);
-        rock.rotation.set(i * 0.7, i * 1.1, i * 0.4);
-        craterGroup.add(rock);
+      const BOULDER_N = 42;
+      for (let i = 0; i < BOULDER_N; i++) {
+        const seed = i * 3.71 + 1.3;
+        const zone = i / BOULDER_N;
+        let rad, size;
+        if (zone < 0.4) {
+          // slumped terrace megablocks along the rim
+          rad = CRATER_R * (0.58 + ((i * 13) % 9) / 9 * 0.24);
+          size = 0.013 + ((i * 7) % 5) * 0.0048;
+        } else if (zone < 0.85) {
+          // ejecta rubble scattered across the surrounding blanket
+          rad = CRATER_R * (0.86 + ((i * 17) % 13) / 13 * 0.5);
+          size = 0.006 + ((i * 11) % 5) * 0.0026;
+        } else {
+          // sparse breccia-lens rubble on the floor, clear of the melt pool
+          rad = CRATER_R * (0.32 + ((i * 19) % 7) / 7 * 0.2);
+          size = 0.008 + ((i * 5) % 4) * 0.003;
+        }
+        const ang = seed * 1.9 + Math.sin(i * 0.7) * 0.6;
+        // x0/y0 are true terrain-local coords (what craterHeight expects to
+        // pick the right rim/bowl/blanket zone). boulderGroup counter-scales
+        // x/y against craterGroup's pop, so the *placed* x/y must be
+        // pre-multiplied by the pop's final scale (1.36) to land on the same
+        // spot the terrain itself settles at — z needs no such correction
+        // since it isn't counter-scaled and grows with the floor naturally
+        const x0 = Math.cos(ang) * rad, y0 = Math.sin(ang) * rad;
+        const rock = new THREE.Mesh(makeBoulderGeo(seed, size), boulderMat.clone());
+        const dusty = 0.68 + hash2(i * 3.1, 4.2) * 0.55;
+        rock.material.color.multiplyScalar(dusty);
+        // craterHeight() returns the *raw* (pre-pop) terrain height — but the
+        // floor mesh it needs to match renders that value scaled by the pop's
+        // final 1.36x (same as x/y above), so it must be pre-scaled here too.
+        // The lift (how much of the rock pokes above its resting point) is a
+        // fixed physical amount independent of the pop, so it stays unscaled.
+        // z then passes through craterGroup's own scale (unlike x/y, which
+        // cancel against boulderGroup's counter-scale) — pre-divide by 1.36 so
+        // the sphere-corrected height lands right once that scale settles.
+        const groundZ = craterHeight(x0, y0) * 1.36 + size * 0.05;
+        const [wx, wy, wz] = sphereWrap(x0 * 1.36, y0 * 1.36, groundZ);
+        rock.position.set(wx, wy, wz / 1.36);
+        rock.rotation.set(seed, seed * 1.4, seed * 0.6);
+        boulderGroup.add(rock);
         boulders.push(rock);
       }
       craterGroup.scale.setScalar(0.001);
@@ -1429,14 +1558,35 @@
           ctx.fillStyle = g;
           ctx.fillRect(0, 0, c.width, c.height);
         } else {
-          const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, r);
-          g.addColorStop(0, 'rgba(255,255,255,1)');
-          g.addColorStop(0.22, 'rgba(255,255,255,0.85)');
-          g.addColorStop(0.4, 'rgba(255,255,255,0.25)');
-          g.addColorStop(0.7, 'rgba(255,255,255,0)');
+          // irregular rock-chunk silhouette for flying ejecta — a plain radial
+          // gradient reads as a glowing marble, not a piece of broken rock
+          const spikes = 9;
+          const verts = [];
+          for (let i = 0; i < spikes; i++) {
+            const a = (i / spikes) * Math.PI * 2;
+            const rr = r * (0.48 + hash2(i * 4.1 + 2.3, 7.7) * 0.44);
+            verts.push([cx + Math.cos(a) * rr, cy + Math.sin(a) * rr]);
+          }
+          const g = ctx.createRadialGradient(cx - r * 0.18, cy - r * 0.22, 0, cx, cy, r * 0.95);
+          g.addColorStop(0, 'rgba(255,255,255,0.95)');
+          g.addColorStop(0.4, 'rgba(255,255,255,0.55)');
+          g.addColorStop(0.75, 'rgba(255,255,255,0.22)');
           g.addColorStop(1, 'rgba(255,255,255,0)');
           ctx.fillStyle = g;
-          ctx.fillRect(0, 0, c.width, c.height);
+          ctx.beginPath();
+          ctx.moveTo(verts[0][0], verts[0][1]);
+          for (let i = 1; i < spikes; i++) ctx.lineTo(verts[i][0], verts[i][1]);
+          ctx.closePath();
+          ctx.fill();
+          // dark facet on the shadow side so it reads as a chunk, not a disc
+          ctx.fillStyle = 'rgba(0,0,0,0.24)';
+          ctx.beginPath();
+          ctx.moveTo(cx, cy);
+          ctx.lineTo(verts[Math.floor(spikes * 0.5)][0], verts[Math.floor(spikes * 0.5)][1]);
+          ctx.lineTo(verts[Math.floor(spikes * 0.66)][0], verts[Math.floor(spikes * 0.66)][1]);
+          ctx.lineTo(verts[Math.floor(spikes * 0.83)][0], verts[Math.floor(spikes * 0.83)][1]);
+          ctx.closePath();
+          ctx.fill();
         }
         const t = new THREE.CanvasTexture(c);
         t.needsUpdate = true;
@@ -1496,7 +1646,10 @@
             '  vec4 tex=texture2D(map, gl_PointCoord);',
             '  float age=1.0-vLife;',
             '  float fade=smoothstep(0.0,0.22,age)*smoothstep(0.0,0.45,vLife);',
-            '  float rim=1.0-smoothstep(0.42,0.92,rr);',
+            '  // soft round mask only for gas (uGrow=1) — a rock sprite already has a',
+            '  // jagged silhouette baked into its alpha; masking it by pure radial',
+            '  // distance would sand its spikes back down into a circle',
+            '  float rim=mix(1.0, 1.0-smoothstep(0.42,0.92,rr), uGrow);',
             '  float soft=pow(max(tex.a,0.0), mix(1.15, 0.88, uGrow))*rim;',
             '  float a=soft*uOpacity*fade;',
             '  if(a<0.012) discard;',
@@ -1710,13 +1863,14 @@
         impactBloom.material.uniforms.bloomA.value = 0;
         craterGroup.visible = false;
         craterGroup.scale.setScalar(0.001);
+        boulderGroup.scale.setScalar(1);
         craterFloor.material.emissiveIntensity = 0;
         craterFloor.material.emissive.set(0xff6a18);
         meltPool.material.opacity = 0;
         meltHalo.material.opacity = 0;
         meltOuter.material.opacity = 0;
         ejectaFan.material.opacity = 0;
-        boulders.forEach((b) => { b.material.emissiveIntensity = 0; });
+        boulders.forEach((b) => { b.material.emissiveIntensity = 0; b.material.opacity = 0; });
         craterLight.intensity = 0;
         flashOrb.intensity = 0;
         fillOrb.intensity = 0;
@@ -2175,7 +2329,13 @@
           }
           craterGroup.visible = true;
           const grow = ease(clamp01(ft / 1.15));
-          craterGroup.scale.setScalar(0.38 + grow * 0.98);
+          const craterScale = 0.38 + grow * 0.98;
+          craterGroup.scale.setScalar(craterScale);
+          // counter-scale x/y only, so boulders don't slide radially as the
+          // crater pops open — but let z follow craterGroup's own scale like
+          // craterFloor does, so boulders track the terrain height it's
+          // rendered at instead of resting at the un-scaled (wrong) height
+          boulderGroup.scale.set(1 / craterScale, 1 / craterScale, 1);
           const cool = clamp01((ft - 1.6) / 10);
           craterFloor.material.emissive.setRGB(
             THREE.MathUtils.lerp(1.0, 0.55, cool),
@@ -2188,6 +2348,7 @@
           meltOuter.material.opacity = Math.min(0.4, 0.08 + pulse * 0.22 + melt * 0.14) * (1 - cool * 0.4);
           ejectaFan.material.opacity = Math.min(0.72, ease(clamp01(ft / 1.25)) * 0.66);
           boulders.forEach((b, i) => {
+            b.material.opacity = grow;
             b.material.emissiveIntensity = (0.35 + melt * 1.4) * (1 - cool * 0.6) * (0.55 + (i % 3) * 0.2);
           });
           nights.material.opacity = THREE.MathUtils.lerp(0.85, 0.08, Math.min(1, pulse * 0.85 + melt * 0.7));
@@ -2221,9 +2382,9 @@
         }
 
         stepDebris(ejecta, dt, 0.981, -0.68, EARTH_R + 0.06, 0, 0.012);
-        stepDebris(smoke, dt, 0.996, -0.01, EARTH_R + 0.28, 0.055, 0.05);
-        stepDebris(soot, dt, 0.997, -0.006, EARTH_R + 0.30, 0.038, 0.06);
-        stepDebris(mistFine, dt, 0.998, 0.002, EARTH_R + 0.26, 0.042, 0.055);
+        stepDebris(smoke, dt, 0.996, -0.01, EARTH_R + 0.28, 0.055, 0.075);
+        stepDebris(soot, dt, 0.997, -0.006, EARTH_R + 0.30, 0.038, 0.09);
+        stepDebris(mistFine, dt, 0.998, 0.002, EARTH_R + 0.26, 0.042, 0.08);
 
         const after = clamp01((t - 12.4) / 22);
         ejecta.mat.uniforms.uOpacity.value = t > 12.4 ? THREE.MathUtils.lerp(1.0, 0.14, clamp01((t - 12.4) / 7.2)) : 0;
