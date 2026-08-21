@@ -57,7 +57,7 @@
       .letterbox { transition: none; }
     }
     header {
-      position: absolute; top: 28px; left: 32px; max-width: 420px;
+      position: absolute; top: 32px; left: 32px; max-width: 420px;
     }
     .kicker {
       font-family: "IBM Plex Mono", monospace; font-size: 10px; letter-spacing: 0.28em;
@@ -68,9 +68,9 @@
       font-size: clamp(36px, 4.4vw, 58px); line-height: 0.9; letter-spacing: -0.02em;
     }
     h1 em { font-style: italic; color: #c9c2b2; }
-    .lede { margin-top: 12px; color: var(--mute); font-size: 13px; max-width: 34ch; line-height: 1.5; }
+    .lede { margin-top: 12px; color: var(--mute); font-size: 12.5px; max-width: 34ch; line-height: 1.5; }
     .panel {
-      position: absolute; top: 28px; right: 28px; width: min(280px, calc(100vw - 48px));
+      position: absolute; top: 32px; right: 32px; width: min(280px, calc(100vw - 48px));
       border: 1px solid var(--line); background: rgba(7,8,12,0.46);
       backdrop-filter: blur(14px); padding: 16px 18px 14px;
       transition: width 0.28s ease, padding 0.28s ease, background 0.28s ease;
@@ -95,6 +95,10 @@
     body.pane-min .pane-toggle { width: 36px; height: 36px; }
     .row { display: flex; justify-content: space-between; gap: 16px; padding: 7px 0; border-bottom: 1px solid var(--line); }
     .row:last-child { border-bottom: 0; }
+    /* Phase leads the telemetry list (it's the same status echoed as the
+       footer's headline) — a touch more room and an ember-tinted rule mark
+       it as the header of the readout, not just another metric row */
+    .row:first-child { padding-bottom: 11px; border-bottom-color: rgba(255, 106, 42, 0.28); }
     .label { font-family: "IBM Plex Mono", monospace; font-size: 10px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--mute); }
     .value { font-family: "IBM Plex Mono", monospace; font-size: 12px; color: var(--paper); text-align: right; }
     .value.hot { color: var(--ember); }
@@ -112,20 +116,38 @@
     .check {
       display: flex; align-items: center; gap: 8px; cursor: pointer; width: auto;
     }
-    .check input { accent-color: var(--ember); }
+    .check input { accent-color: var(--ember); width: 16px; height: 16px; flex-shrink: 0; }
+    .check.sub { margin-left: 16px; font-size: 10.5px; opacity: 0.82; }
+    .layers-details summary, .floor-sub-details summary {
+      cursor: pointer; list-style: none; user-select: none; pointer-events: auto;
+    }
+    .layers-details summary::-webkit-details-marker,
+    .floor-sub-details summary::-webkit-details-marker { display: none; }
+    .layers-details summary::before { content: '▸ '; color: var(--gold); }
+    .layers-details[open] summary::before { content: '▾ '; }
+    .layers-list { display: flex; flex-direction: column; gap: 7px; margin-top: 8px; }
+    .floor-sub-details {
+      margin: 2px 0 2px 4px; border-left: 1px solid var(--line); padding-left: 10px;
+    }
+    .floor-sub-details summary {
+      font-size: 10.5px; color: var(--mute); padding: 3px 0;
+    }
+    .floor-sub-details summary::before { content: '▸ '; }
+    .floor-sub-details[open] summary::before { content: '▾ '; }
+    .floor-sub-details .check.sub { margin-left: 0; margin-top: 5px; }
     .cam-btns { display: flex; gap: 6px; margin-top: 8px; }
     .cam-btns button {
       flex: 1; padding: 8px 8px; font-size: 9px; letter-spacing: 0.12em;
     }
     footer {
-      position: absolute; left: 32px; right: 32px; bottom: 26px;
+      position: absolute; left: 32px; right: 32px; bottom: 32px;
       display: flex; align-items: flex-end; justify-content: space-between; gap: 20px;
     }
     .phase-block { max-width: 520px; }
     .phase-name {
       font-family: "Cormorant Garamond", Georgia, serif; font-size: 28px; font-weight: 500; line-height: 1;
     }
-    .phase-copy { margin-top: 6px; color: var(--mute); font-size: 12.5px; line-height: 1.5; max-width: 52ch; }
+    .phase-copy { margin-top: 6px; color: var(--mute); font-size: 14px; line-height: 1.5; max-width: 52ch; }
     .bar { margin-top: 14px; height: 2px; background: rgba(232,226,212,0.12); overflow: hidden; }
     .bar > i { display: block; height: 100%; width: 0%; background: linear-gradient(90deg, #ff9a4a, #ff3b1f); }
     button {
@@ -195,8 +217,14 @@
     }
     @media (max-width: 720px) {
       header { top: 16px; left: 16px; }
-      .panel { top: auto; right: 16px; left: 16px; width: auto; bottom: 118px; }
+      .panel {
+        top: auto; right: 16px; left: 16px; width: auto; bottom: 118px;
+        /* reserve room for the header above (kicker+title+lede, ~150px) so a
+           tall, scrolled-open Layers list can't grow up into overlapping it */
+        max-height: calc(100vh - 118px - 150px); display: flex; flex-direction: column;
+      }
       body.pane-min .panel { left: auto; right: 16px; bottom: 118px; }
+      .panel-body { overflow-y: auto; -webkit-overflow-scrolling: touch; }
       footer { left: 16px; right: 16px; bottom: 16px; flex-direction: column; align-items: stretch; }
       h1 { font-size: 34px; }
     }
@@ -257,6 +285,30 @@
             <button id="cam-reset" type="button">Reset cam</button>
           </div>
         </div>
+        <details class="settings layers-details">
+          <summary class="label">Layers</summary>
+          <div class="layers-list">
+            <label class="check"><input type="checkbox" id="layer-floor" checked /> Crater floor</label>
+            <details class="floor-sub-details">
+              <summary>↳ sub-components</summary>
+              <label class="check sub"><input type="checkbox" id="layer-floor-albedo" checked /> Albedo (colour map)</label>
+              <label class="check sub"><input type="checkbox" id="layer-floor-emit" checked /> Emissive glow (craterEmit)</label>
+              <label class="check sub"><input type="checkbox" id="layer-floor-rough" checked /> Roughness map</label>
+              <label class="check sub"><input type="checkbox" id="layer-floor-vcolor" checked /> Vertex tint (melt/ash)</label>
+              <label class="check sub"><input type="checkbox" id="layer-floor-see" /> See-through (low opacity)</label>
+            </details>
+            <label class="check"><input type="checkbox" id="layer-boulders" checked /> Boulders</label>
+            <label class="check"><input type="checkbox" id="layer-melt" checked /> Melt glow</label>
+            <label class="check"><input type="checkbox" id="layer-ejecta" checked /> Ejecta blanket</label>
+            <label class="check"><input type="checkbox" id="layer-scorch" checked /> Scorch / fire</label>
+            <label class="check"><input type="checkbox" id="layer-fog" checked /> Ground fog</label>
+            <label class="check"><input type="checkbox" id="layer-particles" checked /> Debris particles</label>
+            <label class="check"><input type="checkbox" id="layer-clouds" checked /> Clouds</label>
+            <label class="check"><input type="checkbox" id="layer-shock" checked /> Shockwave ring</label>
+            <label class="check"><input type="checkbox" id="layer-bloom" checked /> Impact bloom</label>
+            <label class="check"><input type="checkbox" id="layer-tsunami" checked /> Tsunami ring</label>
+          </div>
+        </details>
       </div>
     </aside>
     <footer>
@@ -898,7 +950,26 @@
             const ray = Math.pow(Math.max(0, Math.cos(ang * 5.0 + n * 2.4)), 10);
             const crack = Math.abs(Math.sin(ang * 9.0 + n2 * 6.0)) * Math.abs(Math.sin(r * 22 + n3 * 8));
             let R = 0, G = 0, B = 0, A = 255;
-            const rimFade = r > 0.58 ? Math.max(0, 1 - (r - 0.58) / 0.40) : 1;
+            // Widening the fade zone (previous attempt) fixed the ring but
+            // paled the whole floor, because most of the disc — not just the
+            // rim — was partly transparent. Wrong lever: the issue was never
+            // how WIDE the fade is, it's that a perfectly circular gradient
+            // reads as a cutout no matter how gentle. Real crater rims don't
+            // fade smoothly, they break up into rubble. So: stay fully solid
+            // out to r=0.62, then let noise perturb the effective radius
+            // before the (short, steep) fade — the boundary becomes a jagged,
+            // broken edge instead of a clean ring, which doesn't read as
+            // "cut" even though the transition itself is narrow again.
+            const edgeJitter = (fbm(dx * 6 + 11.3, dy * 6 + 5.7) - 0.5) * 0.1
+              + (fbm(dx * 14 - 3.2, dy * 14 + 8.9) - 0.5) * 0.04;
+            const rEdge = r + edgeJitter;
+            const rimT = Math.min(1, Math.max(0, (rEdge - 0.62) / 0.22));
+            const jitteredFade = rEdge >= 0.84 ? 0 : 1 - rimT * rimT * (3 - 2 * rimT);
+            // hard safety net independent of jitter — guarantees a true,
+            // exact zero well inside the mesh's real edge (r=1) no matter
+            // which way the noise pushed rEdge, so there's still a proper
+            // dead buffer and no mesh-boundary artifact can reappear
+            const rimFade = r >= 0.95 ? 0 : jitteredFade;
             if (mode === 'emit') {
               const hot = Math.max(0, 1 - r / 0.46);
               const vein = crack > 0.72 && r < 0.7 ? 0.85 : 0;
@@ -942,6 +1013,13 @@
                 const speck = (clast - 0.5) * 30;
                 R += speck; G += speck * 0.82; B += speck * 0.6;
               }
+              // fade the colour itself toward dark ash as the rim approaches
+              // the cutout edge, not just alpha — an alpha-only fade still
+              // shows a hard-looking colour seam where it turns translucent
+              const edgeDark = 1 - rimFade;
+              R += (10 - R) * edgeDark * 0.85;
+              G += (8 - G) * edgeDark * 0.85;
+              B += (6 - B) * edgeDark * 0.85;
               A = rimFade * 255;
             }
             d[i] = R; d[i + 1] = G; d[i + 2] = B; d[i + 3] = A;
@@ -957,11 +1035,18 @@
       craterGroup.position.copy(impactPoint.clone().multiplyScalar(1.0018));
       craterGroup.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), impactNormal);
       earthGroup.add(craterGroup);
-      const craterGeo = new THREE.CircleGeometry(CRATER_R, 96);
-      const craterPos = craterGeo.attributes.position;
-      const craterCol = new Float32Array(craterPos.count * 3);
-      for (let i = 0; i < craterPos.count; i++) {
-        const x = craterPos.getX(i), y = craterPos.getY(i);
+      // A plain CircleGeometry only has ONE ring of rim vertices plus a single
+      // center vertex — the whole pit/terrace/bowl/rim-hump profile below has
+      // nowhere to land except those two radii, so it collapsed into a shallow
+      // cone and read as a flat painted disc instead of a real depression with
+      // a raised rim. Build the disc with concentric rings instead so the
+      // height profile actually has geometry to express itself on.
+      const CRATER_RINGS = 32, CRATER_SEGS = 96;
+      const craterVertN = 1 + CRATER_RINGS * CRATER_SEGS;
+      const craterPosArr = new Float32Array(craterVertN * 3);
+      const craterUvArr = new Float32Array(craterVertN * 2);
+      const craterCol = new Float32Array(craterVertN * 3);
+      function craterVertex(vi, x, y) {
         const r = Math.sqrt(x * x + y * y);
         const ang = Math.atan2(y, x);
         const n = Math.sin(ang * 5.0 + 0.4) * 0.22 + Math.sin(ang * 11.0 + 1.7) * 0.12
@@ -983,14 +1068,51 @@
           z = 0.004 * (1 - (rn - 0.8) / 0.2) * (0.55 + n * 0.5);
         }
         const scallop = 1 + n * 0.06 * Math.min(1, rn * 1.2);
-        craterPos.setXYZ(i, x * scallop, y * scallop, z);
+        // Same flat-tangent-plane problem sphereWrap already fixed for boulders:
+        // this disc's local x/y is a flat plane at the impact point, and the
+        // sphere curves away underneath it — worst at the outer rim, where the
+        // uncorrected vertices sat measurably above the true surface (the
+        // "crater floor floating above Earth" report). Correct it the same way:
+        // scale to the pop's final 1.36x, wrap onto the sphere, scale back down
+        // so craterGroup's own scale restores the intended value at settle.
+        const [cwx, cwy, cwz] = sphereWrap(x * scallop * 1.36, y * scallop * 1.36, z * 1.36);
+        craterPosArr[vi * 3] = cwx / 1.36;
+        craterPosArr[vi * 3 + 1] = cwy / 1.36;
+        craterPosArr[vi * 3 + 2] = cwz / 1.36;
+        craterUvArr[vi * 2] = 0.5 + (x / CRATER_R) * 0.5;
+        craterUvArr[vi * 2 + 1] = 0.5 + (y / CRATER_R) * 0.5;
         const melt = Math.max(0, 1 - rn / 0.42);
         const ash = Math.max(0, (rn - 0.55) / 0.45);
-        craterCol[i * 3] = 0.1 + melt * 0.55 + ash * 0.14;
-        craterCol[i * 3 + 1] = 0.055 + melt * 0.2 + ash * 0.08;
-        craterCol[i * 3 + 2] = 0.035 + melt * 0.05 + ash * 0.04;
+        craterCol[vi * 3] = 0.1 + melt * 0.55 + ash * 0.14;
+        craterCol[vi * 3 + 1] = 0.055 + melt * 0.2 + ash * 0.08;
+        craterCol[vi * 3 + 2] = 0.035 + melt * 0.05 + ash * 0.04;
       }
+      craterVertex(0, 0, 0);
+      for (let ring = 1; ring <= CRATER_RINGS; ring++) {
+        const r = (ring / CRATER_RINGS) * CRATER_R;
+        for (let seg = 0; seg < CRATER_SEGS; seg++) {
+          const theta = (seg / CRATER_SEGS) * Math.PI * 2;
+          craterVertex(1 + (ring - 1) * CRATER_SEGS + seg, Math.cos(theta) * r, Math.sin(theta) * r);
+        }
+      }
+      const craterIdx = [];
+      for (let seg = 0; seg < CRATER_SEGS; seg++) {
+        craterIdx.push(0, 1 + seg, 1 + (seg + 1) % CRATER_SEGS);
+      }
+      for (let ring = 1; ring < CRATER_RINGS; ring++) {
+        const innerStart = 1 + (ring - 1) * CRATER_SEGS;
+        const outerStart = 1 + ring * CRATER_SEGS;
+        for (let seg = 0; seg < CRATER_SEGS; seg++) {
+          const a = innerStart + seg, b = innerStart + (seg + 1) % CRATER_SEGS;
+          const c = outerStart + seg, d = outerStart + (seg + 1) % CRATER_SEGS;
+          craterIdx.push(a, c, b, b, c, d);
+        }
+      }
+      const craterGeo = new THREE.BufferGeometry();
+      craterGeo.setAttribute('position', new THREE.BufferAttribute(craterPosArr, 3));
+      craterGeo.setAttribute('uv', new THREE.BufferAttribute(craterUvArr, 2));
       craterGeo.setAttribute('color', new THREE.BufferAttribute(craterCol, 3));
+      craterGeo.setIndex(craterIdx);
       craterGeo.computeVertexNormals();
       const craterFloor = new THREE.Mesh(
         craterGeo,
@@ -999,8 +1121,11 @@
           // depthWrite must stay on: this mesh is what boulders rest against —
           // without it writing depth, nothing drawn after it (the boulders'
           // buried lower half especially) gets occluded, so rock reads as
-          // floating on top of the ground instead of sitting embedded in it
-          transparent: true, alphaTest: 0.06, depthWrite: true,
+          // floating on top of the ground instead of sitting embedded in it.
+          // alphaTest stays tiny (not the old 0.06) — that discarded pixels
+          // the moment alpha dropped below 6%, well before the eased rim
+          // fade actually reached zero, and read as a hard-cut ring
+          transparent: true, alphaTest: 0.008, depthWrite: true,
           roughness: 0.9, metalness: 0.12,
           emissive: 0xff6a18, emissiveIntensity: 0
         })
@@ -1047,30 +1172,95 @@
             const i = (y * w + x) * 4;
             const n = fbm(dx * 9 + 1.2, dy * 9 + 3.4);
             const n2 = fbm(dx * 22, dy * 22);
-            const ray = Math.pow(Math.max(0, Math.cos(ang * 6.0 + n * 3.2)), 8)
-              + Math.pow(Math.max(0, Math.cos(ang * 11.0 - n2 * 2.1)), 14) * 0.55;
-            const blanket = Math.max(0, 1 - r / 0.92) * (0.35 + n * 0.55);
-            const cover = Math.min(1, blanket + ray * (0.25 + r * 0.7));
+            // lower powers than before (was 8/14) — those raised such a sharp,
+            // narrow spike that the ray streaks read as hard-edged shapes
+            // rather than soft rays, worst right near the disc's outer edge
+            // where their weight (below) used to be strongest
+            const ray = Math.pow(Math.max(0, Math.cos(ang * 6.0 + n * 3.2)), 5)
+              + Math.pow(Math.max(0, Math.cos(ang * 11.0 - n2 * 2.1)), 7) * 0.55;
+            const blanket = Math.max(0, 1 - r / 0.75) * (0.35 + n * 0.55);
+            // rays used to grow toward the outer edge (r*0.7) — exactly where
+            // they need to be dying out, not peaking — now they fade to zero
+            // well before the disc's true boundary (r=1)
+            const rayFalloff = Math.max(0, Math.min(1, (0.85 - r) / 0.85));
+            const cover = Math.min(1, blanket + ray * (0.25 + r * 0.5) * rayFalloff);
             const ash = 0.12 + n * 0.08;
             const clast = noise2(dx * 110 + 5.4, dy * 110 + 2.6);
             const speck = clast > 0.72 ? (clast - 0.72) / 0.28 * cover * 26 : 0;
-            d[i] = (28 + n * 22 + ray * 18 + speck);
-            d[i + 1] = (18 + n * 12 + ray * 8 + speck * 0.8);
-            d[i + 2] = (12 + n * 6 + speck * 0.5);
-            const fade = r > 0.42 ? Math.max(0, 1 - (r - 0.42) / 0.5) : 1;
+            // No amount of "smoother" math fixed this because the real issue
+            // is 8-bit alpha precision: a curve that only reaches zero right
+            // at the mesh's true edge (r=1) spends its last few percent of
+            // opacity within a couple of quantized alpha levels, and THAT
+            // shows up as a ring no matter how gentle the formula is. Fix:
+            // finish fading to a hard, exact zero well before the edge
+            // (r=0.55), leaving a wide dead buffer with nothing drawn at all
+            // before the mesh's actual boundary is ever reached.
+            const fadeT = Math.min(1, Math.max(0, (r - 0.1) / 0.65));
+            const fadeS = fadeT * fadeT * (3 - 2 * fadeT);
+            const fade = r >= 0.75 ? 0 : Math.pow(1 - fadeS, 1.6);
+            // premultiply: darken colour toward black together with alpha.
+            // Bright RGB left behind fully-transparent texels still bleeds
+            // into visible pixels once generateMipmaps blends them for
+            // anything far enough away to sample a lower mip level — that
+            // bleed is what still read as a hard ring after the alpha-only fade
+            const vis = Math.min(1, cover) * fade;
+            d[i] = (28 + n * 22 + ray * 18 + speck) * vis;
+            d[i + 1] = (18 + n * 12 + ray * 8 + speck * 0.8) * vis;
+            d[i + 2] = (12 + n * 6 + speck * 0.5) * vis;
             d[i + 3] = cover * 180 * fade;
           }
         }
         ctx.putImageData(img, 0, 0);
       }
+      // Same flat-CircleGeometry problem as craterGeo, worse here because this
+      // disc reaches much further out (2.15x CRATER_R) — the curvature the
+      // sphere loses under a flat plane grows with distance, so a flat ejecta
+      // disc this size bulged far above the true ground. Build it with
+      // concentric rings, sphereWrap-corrected, same as craterGeo.
+      function makeGroundDisc(radius, rings, segs, zFn) {
+        const vertN = 1 + rings * segs;
+        const pos = new Float32Array(vertN * 3);
+        const uv = new Float32Array(vertN * 2);
+        function setVert(vi, x, y) {
+          const z = zFn(x, y);
+          const [cwx, cwy, cwz] = sphereWrap(x * 1.36, y * 1.36, z * 1.36);
+          pos[vi * 3] = cwx / 1.36; pos[vi * 3 + 1] = cwy / 1.36; pos[vi * 3 + 2] = cwz / 1.36;
+          uv[vi * 2] = 0.5 + (x / radius) * 0.5; uv[vi * 2 + 1] = 0.5 + (y / radius) * 0.5;
+        }
+        setVert(0, 0, 0);
+        for (let ring = 1; ring <= rings; ring++) {
+          const r = (ring / rings) * radius;
+          for (let seg = 0; seg < segs; seg++) {
+            const theta = (seg / segs) * Math.PI * 2;
+            setVert(1 + (ring - 1) * segs + seg, Math.cos(theta) * r, Math.sin(theta) * r);
+          }
+        }
+        const idx = [];
+        for (let seg = 0; seg < segs; seg++) idx.push(0, 1 + seg, 1 + (seg + 1) % segs);
+        for (let ring = 1; ring < rings; ring++) {
+          const innerStart = 1 + (ring - 1) * segs, outerStart = 1 + ring * segs;
+          for (let seg = 0; seg < segs; seg++) {
+            const a = innerStart + seg, b = innerStart + (seg + 1) % segs;
+            const c = outerStart + seg, d = outerStart + (seg + 1) % segs;
+            idx.push(a, c, b, b, c, d);
+          }
+        }
+        const geo = new THREE.BufferGeometry();
+        geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+        geo.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
+        geo.setIndex(idx);
+        geo.computeVertexNormals();
+        return geo;
+      }
       const ejectaFan = new THREE.Mesh(
-        new THREE.CircleGeometry(CRATER_R * 2.15, 96),
+        // craterFloor's own rim/bowl profile tapers to exactly z=0 at its
+        // outer edge (rn=1), so the blanket needs to sit flush with that
+        makeGroundDisc(CRATER_R * 2.15, 24, 96, () => -0.0005),
         new THREE.MeshBasicMaterial({
           map: canvasTex(paintEjecta, 384, 384),
           transparent: true, opacity: 0, depthWrite: false
         })
       );
-      ejectaFan.position.z = -0.004;
       craterGroup.add(ejectaFan);
       const boulderMat = new THREE.MeshStandardMaterial({
         color: 0x2c2218, roughness: 0.96, metalness: 0.08, flatShading: true,
@@ -1170,7 +1360,9 @@
         // z then passes through craterGroup's own scale (unlike x/y, which
         // cancel against boulderGroup's counter-scale) — pre-divide by 1.36 so
         // the sphere-corrected height lands right once that scale settles.
-        const groundZ = craterHeight(x0, y0) * 1.36 + size * 0.05;
+        // negative: sink the centre below ground level so more than half the
+        // rock is buried — a positive lift here reads as "resting on top"
+        const groundZ = craterHeight(x0, y0) * 1.36 - size * 0.3;
         const [wx, wy, wz] = sphereWrap(x0 * 1.36, y0 * 1.36, groundZ);
         rock.position.set(wx, wy, wz / 1.36);
         rock.rotation.set(seed, seed * 1.4, seed * 0.6);
@@ -1710,6 +1902,61 @@
       );
       earthGroup.add(groundFog);
 
+      // Layer toggles — lets us isolate one visual system at a time to pin
+      // down which one is responsible for a given look, instead of guessing
+      // from a screenshot with everything stacked together.
+      function wireLayerToggle(id, targets) {
+        const el = document.getElementById(id);
+        if (!el) return;
+        const apply = () => targets.forEach((t) => { if (t) t.visible = el.checked; });
+        el.addEventListener('change', apply);
+        apply();
+      }
+      wireLayerToggle('layer-floor', [craterFloor]);
+      // sub-toggles for craterFloor's individual material channels — these
+      // aren't separate objects, just properties on the one material, so they
+      // need their own wiring instead of the .visible-based helper above
+      function wireMaterialToggle(id, on, off) {
+        const el = document.getElementById(id);
+        if (!el) return;
+        const apply = () => { off(); if (el.checked) on(); craterFloor.material.needsUpdate = true; };
+        el.addEventListener('change', apply);
+        apply();
+      }
+      wireMaterialToggle('layer-floor-albedo',
+        () => { craterFloor.material.map = craterMap; craterFloor.material.opacity = 1; },
+        () => { craterFloor.material.map = null; craterFloor.material.opacity = 0; });
+      wireMaterialToggle('layer-floor-emit',
+        () => { craterFloor.material.emissiveMap = craterEmit; },
+        () => { craterFloor.material.emissiveMap = null; });
+      wireMaterialToggle('layer-floor-rough',
+        () => { craterFloor.material.roughnessMap = craterRough; },
+        () => { craterFloor.material.roughnessMap = null; });
+      wireMaterialToggle('layer-floor-vcolor',
+        () => { craterFloor.material.vertexColors = true; },
+        () => { craterFloor.material.vertexColors = false; });
+      wireMaterialToggle('layer-floor-see',
+        () => { craterFloor.material.opacity = 0.18; },
+        () => { craterFloor.material.opacity = 1; });
+      wireLayerToggle('layer-boulders', [boulderGroup]);
+      wireLayerToggle('layer-melt', [meltPool, meltHalo, meltOuter]);
+      wireLayerToggle('layer-ejecta', [ejectaFan]);
+      wireLayerToggle('layer-scorch', [scorch]);
+      wireLayerToggle('layer-fog', [groundFog]);
+      wireLayerToggle('layer-particles', [ejecta.pts, smoke.pts, soot.pts, mistFine.pts]);
+      wireLayerToggle('layer-clouds', [clouds, highClouds]);
+      wireLayerToggle('layer-bloom', [impactBloom]);
+      wireLayerToggle('layer-tsunami', [tsunami]);
+      // shock.visible is also driven every frame by the animate loop once the
+      // shockwave phase starts, so a plain .visible toggle here would just get
+      // overwritten next frame — gate the animate loop's own assignment instead
+      let shockLayerOn = true;
+      (function () {
+        const el = document.getElementById('layer-shock');
+        if (!el) return;
+        el.addEventListener('change', () => { shockLayerOn = el.checked; shock.visible = shockLayerOn; });
+      })();
+
       function resetDebris(sys) {
         for (let i = 0; i < sys.count; i++) {
           sys.parts[i].life = 0;
@@ -1866,6 +2113,7 @@
         boulderGroup.scale.setScalar(1);
         craterFloor.material.emissiveIntensity = 0;
         craterFloor.material.emissive.set(0xff6a18);
+        craterFloor.material.color.set(0xffffff);
         meltPool.material.opacity = 0;
         meltHalo.material.opacity = 0;
         meltOuter.material.opacity = 0;
@@ -2297,7 +2545,16 @@
 
           flashOrb.intensity = pulse * 36 + melt * 7;
           fillOrb.intensity = pulse * 22 + melt * 5;
-          craterLight.intensity = 2.2 + pulse * 7.5 + melt * 3.2;
+          // the 2.2 baseline never decayed — every other glow term above
+          // fades with pulse/melt, but this point light floodlit the crater
+          // floor at full brightness forever, which is what actually painted
+          // it as a flat, featureless pale disc no alpha/colour fix could touch.
+          // First attempt (exp(-ft*0.015)) decayed far too slowly to matter
+          // within the sim's actual runtime — quadratic to zero over the same
+          // ~10-unit window the rest of the crater already uses to fully cool
+          const lightCool = clamp01((ft - 1.6) / 10);
+          const emberBase = 2.2 * (1 - lightCool) * (1 - lightCool);
+          craterLight.intensity = emberBase + pulse * 7.5 + melt * 3.2;
           atmo.material.uniforms.impactGlow.value = pulse * 1.35 + melt * 0.32;
 
           // exposure pop then settle
@@ -2343,6 +2600,11 @@
             THREE.MathUtils.lerp(0.12, 0.03, cool)
           );
           craterFloor.material.emissiveIntensity = 1.15 + pulse * 3.4 + melt * 1.5 - cool * 0.55;
+          // the floor's base albedo never darkened with cool — only the glow did —
+          // so once scorch/ejecta ash the surrounding land, the crater interior kept
+          // its warm baked-in colour and read as a bare, un-ashed hole in the middle
+          const ashTint = THREE.MathUtils.lerp(1.0, 0.3, cool);
+          craterFloor.material.color.setRGB(ashTint, ashTint * 0.92, ashTint * 0.86);
           meltPool.material.opacity = Math.min(0.82, 0.22 + pulse * 0.52 + melt * 0.28) * (1 - cool * 0.55);
           meltHalo.material.opacity = Math.min(0.62, 0.14 + pulse * 0.38 + melt * 0.2) * (1 - cool * 0.48);
           meltOuter.material.opacity = Math.min(0.4, 0.08 + pulse * 0.22 + melt * 0.14) * (1 - cool * 0.4);
@@ -2413,7 +2675,7 @@
 
         if (t >= 14.2) {
           const sw = clamp01((t - 14.2) / 6.4);
-          shock.visible = true;
+          shock.visible = shockLayerOn;
           shock.material.uniforms.waveR.value = sw * 3.15;
           shock.material.uniforms.waveW.value = 0.055 + sw * 0.07;
           shock.material.uniforms.waveA.value = (1 - sw) * 1.15;
