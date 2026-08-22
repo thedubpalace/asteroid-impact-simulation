@@ -1306,17 +1306,31 @@
       // each boulder gets its own irregular hull instead of a shared scaled icosahedron —
       // repeated identical rocks read as fake in close-up shots
       function makeBoulderGeo(seed, size) {
-        const geo = new THREE.IcosahedronGeometry(size, 1);
+        // Smooth sine-wave crag on a subdivided icosahedron reads as a lumpy
+        // sphere, not a rock — real broken rock has flat facets at sharply
+        // different distances from the centre. Detail-0 icosahedron (12
+        // corners, 20 faces) + flatShading gives the facets; per-corner
+        // *independent* random jitter (not a smooth field) gives the angular,
+        // broken-chunk silhouette instead of a bumpy potato.
+        const geo = new THREE.IcosahedronGeometry(size, 0);
         const gp = geo.attributes.position;
+        // per-boulder axis stretch so chunks vary between blocky and elongated
+        const sx = 0.75 + hash2(seed, 1.1) * 0.6;
+        const sy = 0.75 + hash2(seed, 2.3) * 0.6;
+        const sz = 0.75 + hash2(seed, 3.7) * 0.6;
         for (let i = 0; i < gp.count; i++) {
           const v = new THREE.Vector3().fromBufferAttribute(gp, i);
           const nrm = v.clone().normalize();
-          // crag noise must run on the unit-length normal, not raw vertex coords —
-          // those scale with the boulder's tiny size (~0.006-0.018), which drowns
-          // out these frequencies and leaves an almost-undeformed sphere
-          const crag = Math.sin(nrm.x * 7.4 + seed) * 0.19 + Math.cos(nrm.y * 6.1 - seed * 1.7) * 0.16
-            + Math.sin(nrm.z * 9.2 + seed * 2.3) * 0.12 + Math.sin((nrm.x + nrm.y) * 5.3 + seed * 0.6) * 0.09;
-          v.copy(nrm.multiplyScalar(size * (0.74 + crag)));
+          // This geometry is non-indexed — each of the 12 corners is
+          // duplicated across its adjacent faces. Hash on the (quantized)
+          // direction, not the buffer index, so every copy of the same
+          // corner gets the identical jitter and the mesh stays watertight
+          // instead of cracking apart at the seams.
+          const key1 = Math.round(nrm.x * 500) + seed * 97;
+          const key2 = Math.round(nrm.y * 500) - Math.round(nrm.z * 500) + seed * 53;
+          const jitter = 0.42 + hash2(key1, key2) * 0.8;
+          v.copy(nrm.multiplyScalar(size * jitter));
+          v.x *= sx; v.y *= sy; v.z *= sz;
           gp.setXYZ(i, v.x, v.y, v.z);
         }
         geo.computeVertexNormals();
