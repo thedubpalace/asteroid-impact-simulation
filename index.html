@@ -71,20 +71,36 @@
     .lede { margin-top: 12px; color: var(--mute); font-size: 12.5px; max-width: 34ch; line-height: 1.5; }
     .panel {
       position: absolute; top: 32px; right: 32px; width: min(280px, calc(100vw - 48px));
+      /* sit above the title/lede and the grain overlay so the controls are
+         always legible and clickable, but stay under the letterbox (z 20) so
+         the cinematic bars still frame over it */
+      z-index: 15;
+      /* never tall enough to reach the footer / its Replay button: the body
+         scrolls internally instead of the panel growing down over the footer
+         or up behind the title (top 32 + ~100 reserved for the footer zone) */
+      max-height: calc(100vh - 32px - 100px);
+      display: flex; flex-direction: column;
       border: 1px solid var(--line); background: rgba(7,8,12,0.46);
       backdrop-filter: blur(14px); padding: 16px 18px 14px;
       transition: width 0.28s ease, padding 0.28s ease, background 0.28s ease;
     }
     .panel-head {
       display: flex; align-items: center; justify-content: space-between; gap: 12px;
-      margin: -4px 0 10px;
+      margin: -4px 0 10px; flex: 0 0 auto;
     }
     .panel-head .label { margin: 0; }
     .pane-toggle {
       pointer-events: auto; flex: 0 0 auto; width: 28px; height: 28px; padding: 0;
       letter-spacing: 0; font-size: 14px; line-height: 1;
     }
-    .panel-body { overflow: hidden; }
+    .panel-body {
+      overflow-y: auto; overflow-x: hidden; min-height: 0;
+      scrollbar-width: thin; scrollbar-color: var(--line) transparent;
+    }
+    .panel-body::-webkit-scrollbar { width: 6px; }
+    .panel-body::-webkit-scrollbar-track { background: transparent; }
+    .panel-body::-webkit-scrollbar-thumb { background: var(--line); border-radius: 3px; }
+    .panel-body::-webkit-scrollbar-thumb:hover { background: var(--ember); }
     body.pane-min .panel {
       width: auto; padding: 6px;
       background: rgba(7,8,12,0.28);
@@ -215,7 +231,10 @@
     body.is-playing .gate {
       opacity: 0; visibility: hidden; pointer-events: none;
     }
-    @media (max-width: 720px) {
+    /* 820, not 720: above this the top-right panel and the top-left title/lede
+       start overlapping horizontally (header maxes at 420px + 32 left, panel is
+       280px + 32 right). Drop the panel to the bottom before that can happen. */
+    @media (max-width: 820px) {
       header { top: 16px; left: 16px; }
       .panel {
         top: auto; right: 16px; left: 16px; width: auto; bottom: 118px;
