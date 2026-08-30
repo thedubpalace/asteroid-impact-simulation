@@ -915,12 +915,63 @@
       );
       earthGroup.add(earth);
 
+      // Dynamic Blinn-Phong sun glint on open water, masked by the ocean map —
+      // reads as a real specular highlight sliding across the sea rather than a
+      // flat tinted sphere. (Ported from the standalone import build.)
       const oceanGlint = new THREE.Mesh(
         new THREE.SphereGeometry(EARTH_R + 0.005, 112, 112),
-        new THREE.MeshStandardMaterial({
-          color: 0x073454, roughness: 0.62, metalness: 0.08,
-          transparent: true, opacity: 0.18, depthWrite: false,
-          alphaMap: waterMap
+        new THREE.ShaderMaterial({
+          transparent: true, depthWrite: false,
+          uniforms: {
+            waterMap: { value: waterMap },
+            sunDir: { value: sun.position.clone().normalize() },
+            oceanColor: { value: new THREE.Color(0x052840) },
+            // Impact site (crater/ejecta) sits just under this glint sphere but
+            // the water mask has no idea the shallow sea there turned to land —
+            // without masking it out, the specular highlight keeps painting a
+            // bright "reflection" patch straight over the crater/ejecta.
+            impactDir: { value: impactNormal.clone() },
+            // Must cover the full ejecta apron (ejectaFan radius CRATER_R * 2.15,
+            // craterGroup settles at ~1.36x scale, plus margin), not just the
+            // crater proper — otherwise the sheen still bleeds onto the outer
+            // ejecta ring and reads as an odd "reflection" there.
+            craterMaskCos: { value: Math.cos(Math.asin(Math.min(0.98, (CRATER_R * 2.15 * 1.36 * 1.15) / EARTH_R))) }
+          },
+          vertexShader: [
+            'varying vec3 vWNormal; varying vec3 vWPos; varying vec2 vUv; varying vec3 vLocalN;',
+            'void main(){',
+            '  vUv = uv;',
+            '  vLocalN = normalize(position);',
+            '  vec4 wp = modelMatrix * vec4(position, 1.0);',
+            '  vWPos = wp.xyz;',
+            '  vWNormal = normalize(mat3(modelMatrix) * normal);',
+            '  gl_Position = projectionMatrix * viewMatrix * wp;',
+            '}'
+          ].join('\n'),
+          fragmentShader: [
+            'uniform sampler2D waterMap; uniform vec3 sunDir; uniform vec3 oceanColor;',
+            'uniform vec3 impactDir; uniform float craterMaskCos;',
+            'varying vec3 vWNormal; varying vec3 vWPos; varying vec2 vUv; varying vec3 vLocalN;',
+            'void main(){',
+            // impactDir/impactNormal are local-space (relative to earthGroup);
+            // must compare against the local-space normal, not the world-space
+            // one, or the mask hole drifts off the crater as Earth rotates.
+            '  if (dot(vLocalN, impactDir) > craterMaskCos) discard;',
+            '  float mask = texture2D(waterMap, vUv).r;',
+            '  if (mask < 0.02) discard;',
+            '  vec3 n = normalize(vWNormal);',
+            '  vec3 v = normalize(cameraPosition - vWPos);',
+            '  vec3 l = normalize(sunDir);',
+            '  vec3 h = normalize(l + v);',
+            '  float spec = pow(max(dot(n, h), 0.0), 140.0) * 3.2;',
+            '  float broad = pow(max(dot(n, h), 0.0), 18.0) * 0.25;',
+            '  float fres = pow(1.0 - max(dot(n, v), 0.0), 3.0);',
+            '  float glint = spec + broad;',
+            '  vec3 col = oceanColor + vec3(1.0, 0.97, 0.87) * glint + vec3(0.3, 0.5, 0.7) * fres * 0.3;',
+            '  float alpha = mask * clamp(0.16 + glint * 0.85 + fres * 0.12, 0.0, 1.0);',
+            '  gl_FragColor = vec4(col, alpha);',
+            '}'
+          ].join('\n')
         })
       );
       earthGroup.add(oceanGlint);
@@ -2211,7 +2262,13 @@
         setLoad(64, 'Polishing seas');
         await yieldFrame();
         specMap = swapMap(earth, 'roughnessMap', canvasTex(paintSpec, 1024, 512));
-        waterMap = swapMap(oceanGlint, 'alphaMap', canvasTex(paintWater, 1024, 512));
+        // oceanGlint is a ShaderMaterial now — feed the real water mask into its
+        // uniform instead of an alphaMap slot.
+        const nextWater = canvasTex(paintWater, 1024, 512);
+        const prevWater = oceanGlint.material.uniforms.waterMap.value;
+        oceanGlint.material.uniforms.waterMap.value = nextWater;
+        if (prevWater && prevWater !== nextWater && prevWater.dispose) prevWater.dispose();
+        waterMap = nextWater;
 
         setLoad(74, 'Lighting the night side');
         await yieldFrame();
