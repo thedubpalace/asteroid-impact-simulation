@@ -349,6 +349,7 @@
   </div>
   <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
   <script>
     (function () {
       const EARTH_R = 2.4;
@@ -2689,144 +2690,45 @@
         new THREE.PointsMaterial({ color: 0x7a7266, size: 0.14, transparent: true, opacity: 0.5 }));
       groundScene.add(ashPts);
 
-      // Procedural tyrannosaur, side-on. Built as an organic mass (a chain of
-      // stretched spheres down a hand-tuned spine) plus tapered-cylinder limbs,
-      // in the modern horizontal-spine / counterbalanced-tail posture. It's a
-      // near-black silhouette in fog, so proportions carry it, not surface.
+      // The dinosaur is a Quaternius model — "Animated Dinosaur Bundle" T-Rex,
+      // CC0 / public domain, via Poly Pizza (poly.pizza/u/Quaternius). Shipped
+      // as models/trex.glb (FBX2glTF, CharacterArmature with Idle/Walk/Death
+      // clips). Loaded async; until it arrives dinoModel is null and
+      // updateGround skips it. Every mesh is re-materialled to a flat near-black
+      // so it silhouettes in the fog like everything else in this scene.
+      const dino = new THREE.Group();
+      dino.position.set(0.5, 0, -12);
+      groundScene.add(dino);
+      let dinoModel = null, dinoMixer = null, dinoIdle = null, dinoDeath = null;
+      let dinoDeathDur = 1;
       const dinoMat = new THREE.MeshStandardMaterial({
         color: 0x0a0a0c, roughness: 1, metalness: 0, transparent: true, opacity: 1
       });
-      // ellipsoid body segment (stretched along the spine so few are needed)
-      function blob(x, y, r, sx, z) {
-        const m = new THREE.Mesh(new THREE.SphereGeometry(r, 14, 12), dinoMat);
-        m.position.set(x, y, z || 0);
-        m.scale.set(sx || 1.4, 1, 1);
-        return m;
-      }
-      // tapered bone between two points in the XY plane
-      function bone(x1, y1, x2, y2, r1, r2, z) {
-        const v = new THREE.Vector3(x2 - x1, y2 - y1, 0);
-        const len = v.length();
-        const m = new THREE.Mesh(new THREE.CylinderGeometry(r2, r1, len, 9), dinoMat);
-        m.position.set((x1 + x2) / 2, (y1 + y2) / 2, z || 0);
-        m.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), v.normalize());
-        return m;
-      }
-
-      const dino = new THREE.Group();
-      const dinoBody = new THREE.Group();
-      dino.add(dinoBody);
-
-      // spine: tail tip -> hips -> back -> shoulders -> neck base  [x, y, radius]
-      const spine = [
-        [-6.7, 2.85, 0.10], [-5.9, 2.88, 0.19], [-5.1, 2.95, 0.30],
-        [-4.3, 3.02, 0.44], [-3.5, 3.10, 0.60], [-2.7, 3.18, 0.80],
-        [-1.9, 3.22, 1.00], [-1.1, 3.26, 1.16], [-0.3, 3.30, 1.20],
-        [0.5, 3.24, 1.12], [1.2, 3.12, 0.92], [1.9, 3.08, 0.70]
-      ];
-      for (let i = 0; i < spine.length; i++) {
-        const [x, y, r] = spine[i];
-        dinoBody.add(blob(x, y, r, 1.5));
-        if (i < spine.length - 1) {
-          const n = spine[i + 1];
-          dinoBody.add(bone(x, y, n[0], n[1], r * 0.92, n[2] * 0.92));
-        }
-      }
-      // belly line + a little hip mass so it doesn't read as a plain tube
-      dinoBody.add(blob(-1.4, 2.7, 1.05, 1.25));
-      dinoBody.add(blob(-0.2, 2.75, 1.0, 1.2));
-
-      // neck (S-curve up and forward) — its own pivot at the shoulders
-      const dnNeck = new THREE.Group();
-      dnNeck.position.set(1.9, 3.08, 0);
-      dinoBody.add(dnNeck);
-      const neck = [
-        [0.0, 0.0, 0.62], [0.45, 0.42, 0.54], [0.9, 0.75, 0.47],
-        [1.35, 0.92, 0.44], [1.75, 0.9, 0.44]
-      ];
-      for (let i = 0; i < neck.length; i++) {
-        const [x, y, r] = neck[i];
-        dnNeck.add(blob(x, y, r, 1.25));
-        if (i < neck.length - 1) {
-          const n = neck[i + 1];
-          dnNeck.add(bone(x, y, n[0], n[1], r * 0.9, n[2] * 0.9));
-        }
-      }
-
-      // head — pivots at the base of the skull
-      const dnHeadPiv = new THREE.Group();
-      dnHeadPiv.position.set(1.75, 0.9, 0);
-      dnNeck.add(dnHeadPiv);
-      const skull = blob(0.55, -0.02, 0.5, 1.55); skull.scale.y = 0.82; dnHeadPiv.add(skull);
-      dnHeadPiv.add(bone(0.05, 0.0, 1.05, -0.12, 0.42, 0.34));   // muzzle top
-      const snoutTip = blob(1.25, -0.18, 0.26, 1.2); dnHeadPiv.add(snoutTip);
-      const brow = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.22, 0.62), dinoMat);
-      brow.position.set(0.45, 0.34, 0); brow.rotation.z = -0.12; dnHeadPiv.add(brow);
-      // lower jaw, slightly agape
-      const jaw = new THREE.Group();
-      jaw.position.set(0.1, -0.32, 0);
-      jaw.rotation.z = -0.16;
-      dnHeadPiv.add(jaw);
-      jaw.add(bone(0.0, 0.0, 1.05, 0.02, 0.2, 0.14));
-      const jawMass = new THREE.Mesh(new THREE.BoxGeometry(1.0, 0.26, 0.5), dinoMat);
-      jawMass.position.set(0.5, -0.02, 0); jaw.add(jawMass);
-
-      // digitigrade hind leg: thigh forward-down, shin back-down, upright
-      // metatarsus, splayed toes on the ground. shinPiv drives the buckle.
-      // digitigrade stance: near-vertical thigh, shin raked back, upright
-      // metatarsus, flat forward-splayed toes. Tuned so the toes sit on y=0.
-      function makeLeg(z, fwd) {
-        const grp = new THREE.Group();
-        grp.position.set(-1.5 + fwd, 3.15, z);
-        grp.add(bone(0, 0, 0.32, -1.25, 0.5, 0.32, 0));          // thigh
-        grp.add(blob(0, 0, 0.48, 1)); grp.add(blob(0.32, -1.25, 0.32, 1));
-        const shinPiv = new THREE.Group();
-        shinPiv.position.set(0.32, -1.25, 0);
-        grp.add(shinPiv);
-        shinPiv.add(bone(0, 0, -0.42, -1.15, 0.3, 0.18, 0));     // shin
-        shinPiv.add(blob(-0.42, -1.15, 0.17, 1));
-        shinPiv.add(bone(-0.42, -1.15, -0.2, -1.9, 0.16, 0.12, 0)); // metatarsus
-        const foot = new THREE.Group();
-        foot.position.set(-0.2, -1.9, 0);
-        shinPiv.add(foot);
-        for (let ti = -1; ti <= 1; ti++) {
-          foot.add(bone(0, 0, 0.6, -0.02, 0.12, 0.055, ti * 0.15));
-        }
-        foot.add(bone(0, 0, -0.32, -0.02, 0.1, 0.05, 0));        // hallux
-        return { grp, shinPiv };
-      }
-      const legF = makeLeg(-0.58, 0.12);   // near leg, planted slightly forward
-      const legB = makeLeg(0.58, -0.3);    // far leg, set back
-      dinoBody.add(legB.grp, legF.grp);
-
-      // vestigial two-fingered forelimbs
-      function makeArm(z) {
-        const a = new THREE.Group();
-        a.position.set(1.15, 2.55, z);
-        a.rotation.z = -0.5;
-        a.add(bone(0, 0, 0.55, -0.5, 0.16, 0.11));
-        a.add(bone(0.55, -0.5, 1.0, -0.62, 0.11, 0.08));
-        a.add(bone(1.0, -0.62, 1.28, -0.5, 0.06, 0.03, 0.05));
-        a.add(bone(1.0, -0.62, 1.26, -0.72, 0.06, 0.03, -0.05));
-        return a;
-      }
-      dinoBody.add(makeArm(-0.45), makeArm(0.45));
-
-      dino.position.set(0.5, 0, -12);
-      dino.rotation.y = -0.16;
-      dino.scale.setScalar(1.3);
-      groundScene.add(dino);
+      new THREE.GLTFLoader().load('models/trex.glb', (gltf) => {
+        dinoModel = gltf.scene;
+        dinoModel.traverse((o) => { if (o.isMesh) { o.material = dinoMat; o.castShadow = false; } });
+        dinoModel.scale.setScalar(3.3);
+        dinoModel.rotation.y = -Math.PI / 2 - 0.25;   // side-on profile, facing screen-right
+        dino.add(dinoModel);
+        dinoMixer = new THREE.AnimationMixer(dinoModel);
+        const byName = (n) => THREE.AnimationClip.findByName(gltf.animations, n);
+        dinoIdle = dinoMixer.clipAction(byName('CharacterArmature|Idle'));
+        dinoDeath = dinoMixer.clipAction(byName('CharacterArmature|Death'));
+        dinoDeath.clampWhenFinished = true;
+        dinoDeath.loop = THREE.LoopOnce;
+        dinoDeathDur = byName('CharacterArmature|Death').duration;
+        dinoIdle.play();
+      });
 
       function resetGround() {
         hud.veil.style.opacity = 0;
         dinoMat.opacity = 1;
         dino.position.set(0.5, 0, -12);
-        dino.rotation.set(0, -0.16, 0);
-        dinoBody.position.y = 0;
-        dnNeck.rotation.z = 0;
-        dnHeadPiv.rotation.set(0, 0, 0);
-        legB.shinPiv.rotation.z = 0;
-        legF.shinPiv.rotation.z = 0.05;
+        if (dinoMixer) {
+          dinoDeath.stop();
+          dinoIdle.reset().play();
+          dinoMixer.update(0);
+        }
         groundScene.fog.density = 0.022;
         groundScene.fog.color.set(0x7a7062);
         groundScene.background.set(0x7a7062);
@@ -2839,7 +2741,7 @@
 
         // starts lit (some daylight still forces through), then the smoke pall
         // thickens continuously across the whole phase until it's near-black
-        const dk = ease(clamp01((pe - 0.12) / 0.82));
+        const dk = ease(clamp01((pe - 0.2) / 0.72));
         groundKey.intensity = THREE.MathUtils.lerp(1.7, 0.06, dk);
         groundAmb.intensity = THREE.MathUtils.lerp(0.95, 0.09, dk);
         groundHemi.intensity = THREE.MathUtils.lerp(0.95, 0.09, dk);
@@ -2886,36 +2788,24 @@
         }
         ashGeo.attributes.position.needsUpdate = true;
 
-        // stands → lies down → gone
-        const idle = reduceMotion ? 0 : Math.sin(t * 1.1);
-        if (pe < 0.5) {
-          // standing in the rain: slow breathing, head sways, weight shifts
-          dinoBody.position.y = idle * 0.055;
-          dnNeck.rotation.z = idle * 0.05;
-          dnHeadPiv.rotation.z = (reduceMotion ? 0 : Math.sin(t * 0.7) * 0.07);
-          dnHeadPiv.rotation.y = (reduceMotion ? 0 : Math.sin(t * 0.45) * 0.12);
-          dino.rotation.x = 0; dino.rotation.z = 0;
-          dino.position.y = 0;
-          legB.shinPiv.rotation.z = 0;
-          legF.shinPiv.rotation.z = 0.05 + idle * 0.04;
-          dinoMat.opacity = 1;
-        } else if (pe < 0.82) {
-          // knees give out, it rolls onto its side, neck and head go down last
-          const k = ease((pe - 0.5) / 0.32);
-          dinoBody.position.y = 0;
-          dnHeadPiv.rotation.y = 0;
-          dnNeck.rotation.z = THREE.MathUtils.lerp(0, -1.15, k);
-          dnHeadPiv.rotation.z = THREE.MathUtils.lerp(0, -0.55, k);
-          dino.rotation.x = THREE.MathUtils.lerp(0, -1.25, k);   // topples toward camera
-          dino.rotation.z = THREE.MathUtils.lerp(0, -0.18, k);
-          dino.position.y = THREE.MathUtils.lerp(0, -1.5, k);
-          legB.shinPiv.rotation.z = THREE.MathUtils.lerp(0, 1.5, k);
-          legF.shinPiv.rotation.z = THREE.MathUtils.lerp(0.05, 1.2, k);
-          dinoMat.opacity = 1;
-        } else {
-          const k = ease((pe - 0.82) / 0.18);
-          dino.position.y = -1.5 - k * 1.9;                      // sinks into the murk
-          dinoMat.opacity = 1 - k;
+        // the animal: idle in the rain up to pe 0.5, then the Death clip
+        // (scrubbed by pe so it lands with the dark), then sink + fade out
+        if (dinoMixer) {
+          if (pe < 0.4) {
+            if (!dinoIdle.isRunning()) { dinoDeath.stop(); dinoIdle.reset().play(); }
+            dinoMixer.update(dt);
+            dino.position.y = 0;
+            dinoMat.opacity = 1;
+          } else {
+            const kd = clamp01((pe - 0.4) / 0.26);         // death plays out over pe 0.4-0.66
+            if (dinoIdle.isRunning()) { dinoIdle.stop(); dinoDeath.reset().play(); }
+            dinoDeath.paused = true;
+            dinoDeath.time = kd * dinoDeathDur;
+            dinoMixer.update(0);
+            const sink = ease(clamp01((pe - 0.72) / 0.28));
+            dino.position.y = -sink * 2.6;
+            dinoMat.opacity = 1 - sink;
+          }
         }
       }
 
