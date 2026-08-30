@@ -2520,8 +2520,8 @@
       const groundScene = new THREE.Scene();
       // a pale ash-grey sky/haze is the whole point — the forest and the animal
       // read as dark silhouettes against it, then it drains to black
-      groundScene.background = new THREE.Color(0x726a5c);
-      groundScene.fog = new THREE.FogExp2(0x726a5c, 0.013);
+      groundScene.background = new THREE.Color(0x7a7062);
+      groundScene.fog = new THREE.FogExp2(0x7a7062, 0.022);
       const groundCam = new THREE.PerspectiveCamera(52, window.innerWidth / window.innerHeight, 0.1, 700);
 
       // starts as a grim overcast dusk you can actually read, then collapses to
@@ -2565,6 +2565,25 @@
       );
       emberBand.position.set(0, 2.5, -140);
       groundScene.add(emberBand);
+
+      // the last of the daylight forcing through the smoke — a soft bright
+      // patch overhead that the thickening pall snuffs out over the phase
+      const mistGlow = new THREE.Mesh(
+        new THREE.PlaneGeometry(220, 150),
+        new THREE.MeshBasicMaterial({
+          map: canvasTex((ctx, w, h) => {
+            const g = ctx.createRadialGradient(w / 2, h / 2, 0, w / 2, h / 2, w / 2);
+            g.addColorStop(0, 'rgba(255,238,205,0.9)');
+            g.addColorStop(0.4, 'rgba(210,190,150,0.35)');
+            g.addColorStop(1, 'rgba(0,0,0,0)');
+            ctx.fillStyle = g; ctx.fillRect(0, 0, w, h);
+          }, 256, 256),
+          transparent: true, opacity: 0.8, fog: false, toneMapped: false,
+          blending: THREE.AdditiveBlending, depthWrite: false
+        })
+      );
+      mistGlow.position.set(-30, 34, -150);
+      groundScene.add(mistGlow);
 
       const floorTex = canvasTex((ctx, w, h) => {
         ctx.fillStyle = '#332e26'; ctx.fillRect(0, 0, w, h);
@@ -2718,29 +2737,32 @@
         dnHeadPiv.rotation.z = 0.1;
         legB.shinPiv.rotation.z = 0;
         legF.shinPiv.rotation.z = 0;
-        groundScene.fog.density = 0.013;
-        groundScene.fog.color.set(0x726a5c);
-        groundScene.background.set(0x726a5c);
+        groundScene.fog.density = 0.022;
+        groundScene.fog.color.set(0x7a7062);
+        groundScene.background.set(0x7a7062);
+        mistGlow.material.opacity = 0.85;
       }
 
       function updateGround(t) {
         const pe = clamp01((t - EXT_T0) / (EXT_T1 - EXT_T0));
         const dt = 1 / 60;
 
-        // hold a readable gloom for the first ~55%, then let it fall toward
-        // (not quite) black — a last ember and the rain stay barely visible
-        const dk = ease(clamp01((pe - 0.55) / 0.45));
-        groundKey.intensity = THREE.MathUtils.lerp(1.6, 0.1, dk);
-        groundAmb.intensity = THREE.MathUtils.lerp(0.9, 0.12, dk);
-        groundHemi.intensity = THREE.MathUtils.lerp(0.9, 0.12, dk);
-        groundScene.fog.density = THREE.MathUtils.lerp(0.013, 0.045, ease(pe));
-        const murk = new THREE.Color(0x726a5c).lerp(new THREE.Color(0x050404), dk);
+        // starts lit (some daylight still forces through), then the smoke pall
+        // thickens continuously across the whole phase until it's near-black
+        const dk = ease(clamp01((pe - 0.12) / 0.82));
+        groundKey.intensity = THREE.MathUtils.lerp(1.7, 0.06, dk);
+        groundAmb.intensity = THREE.MathUtils.lerp(0.95, 0.09, dk);
+        groundHemi.intensity = THREE.MathUtils.lerp(0.95, 0.09, dk);
+        // much denser than before, and it keeps building — visibility collapses
+        groundScene.fog.density = THREE.MathUtils.lerp(0.022, 0.085, ease(pe));
+        const murk = new THREE.Color(0x7a7062).lerp(new THREE.Color(0x040303), dk);
         groundScene.fog.color.copy(murk);
         groundScene.background.copy(murk);
-        const sd = 1 - dk * 0.9;
+        const sd = 1 - dk * 0.94;
         groundSky.material.color.setRGB(sd, sd, sd);
         emberBand.material.opacity = 0.34 * (1 - clamp01(pe / 0.7));
-        renderer.toneMappingExposure = THREE.MathUtils.lerp(1.05, 0.5, dk);
+        mistGlow.material.opacity = 0.85 * (1 - clamp01(pe / 0.45)); // last light, snuffed by ~pe 0.45
+        renderer.toneMappingExposure = THREE.MathUtils.lerp(1.1, 0.42, dk);
 
         const cz = THREE.MathUtils.lerp(17, 12.5, ease(pe));
         const cy = THREE.MathUtils.lerp(3.0, 2.4, pe);
