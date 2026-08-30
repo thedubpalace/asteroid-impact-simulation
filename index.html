@@ -2689,54 +2689,144 @@
         new THREE.PointsMaterial({ color: 0x7a7266, size: 0.14, transparent: true, opacity: 0.5 }));
       groundScene.add(ashPts);
 
-      // theropod silhouette from box primitives — near-black, side-on
+      // Procedural tyrannosaur, side-on. Built as an organic mass (a chain of
+      // stretched spheres down a hand-tuned spine) plus tapered-cylinder limbs,
+      // in the modern horizontal-spine / counterbalanced-tail posture. It's a
+      // near-black silhouette in fog, so proportions carry it, not surface.
       const dinoMat = new THREE.MeshStandardMaterial({
-        color: 0x070708, roughness: 1, metalness: 0, transparent: true, opacity: 1
+        color: 0x0a0a0c, roughness: 1, metalness: 0, transparent: true, opacity: 1
       });
-      const dbx = (w, h, d) => new THREE.Mesh(new THREE.BoxGeometry(w, h, d), dinoMat);
+      // ellipsoid body segment (stretched along the spine so few are needed)
+      function blob(x, y, r, sx, z) {
+        const m = new THREE.Mesh(new THREE.SphereGeometry(r, 14, 12), dinoMat);
+        m.position.set(x, y, z || 0);
+        m.scale.set(sx || 1.4, 1, 1);
+        return m;
+      }
+      // tapered bone between two points in the XY plane
+      function bone(x1, y1, x2, y2, r1, r2, z) {
+        const v = new THREE.Vector3(x2 - x1, y2 - y1, 0);
+        const len = v.length();
+        const m = new THREE.Mesh(new THREE.CylinderGeometry(r2, r1, len, 9), dinoMat);
+        m.position.set((x1 + x2) / 2, (y1 + y2) / 2, z || 0);
+        m.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), v.normalize());
+        return m;
+      }
+
       const dino = new THREE.Group();
       const dinoBody = new THREE.Group();
       dino.add(dinoBody);
-      const dnTorso = dbx(3.4, 1.7, 1.3); dnTorso.position.set(0, 3.1, 0); dnTorso.rotation.z = 0.06; dinoBody.add(dnTorso);
-      const dnHip = dbx(1.5, 1.8, 1.35); dnHip.position.set(-1.5, 3.0, 0); dinoBody.add(dnHip);
-      const dnNeck = new THREE.Group(); dnNeck.position.set(1.5, 3.7, 0); dinoBody.add(dnNeck);
-      const dnNeckSeg = dbx(1.7, 0.9, 0.8); dnNeckSeg.position.set(0.7, 0.5, 0); dnNeckSeg.rotation.z = -0.5; dnNeck.add(dnNeckSeg);
-      const dnHeadPiv = new THREE.Group(); dnHeadPiv.position.set(1.5, 1.05, 0); dnNeck.add(dnHeadPiv);
-      const dnHead = dbx(1.5, 0.8, 0.62); dnHead.position.set(0.5, 0, 0); dnHeadPiv.add(dnHead);
-      const dnJaw = dbx(1.1, 0.28, 0.5); dnJaw.position.set(0.55, -0.45, 0); dnHeadPiv.add(dnJaw);
-      const dnTail = new THREE.Group(); dnTail.position.set(-2.1, 3.2, 0); dinoBody.add(dnTail);
-      let dnTseg = dnTail;
-      for (let k = 0; k < 4; k++) {
-        const t2 = new THREE.Group(); t2.position.set(-1.3, 0, 0); t2.rotation.z = 0.05;
-        const ts = dbx(1.5 - k * 0.28, 0.9 - k * 0.16, 0.7 - k * 0.12); ts.position.set(-0.6, 0, 0);
-        t2.add(ts); dnTseg.add(t2); dnTseg = t2;
+
+      // spine: tail tip -> hips -> back -> shoulders -> neck base  [x, y, radius]
+      const spine = [
+        [-6.7, 2.85, 0.10], [-5.9, 2.88, 0.19], [-5.1, 2.95, 0.30],
+        [-4.3, 3.02, 0.44], [-3.5, 3.10, 0.60], [-2.7, 3.18, 0.80],
+        [-1.9, 3.22, 1.00], [-1.1, 3.26, 1.16], [-0.3, 3.30, 1.20],
+        [0.5, 3.24, 1.12], [1.2, 3.12, 0.92], [1.9, 3.08, 0.70]
+      ];
+      for (let i = 0; i < spine.length; i++) {
+        const [x, y, r] = spine[i];
+        dinoBody.add(blob(x, y, r, 1.5));
+        if (i < spine.length - 1) {
+          const n = spine[i + 1];
+          dinoBody.add(bone(x, y, n[0], n[1], r * 0.92, n[2] * 0.92));
+        }
       }
-      function makeLeg(px) {
-        const L = new THREE.Group(); L.position.set(px, 3.0, 0);
-        const thigh = dbx(0.7, 1.9, 0.6); thigh.position.set(0, -0.8, 0); thigh.rotation.z = 0.25; L.add(thigh);
-        const shinPiv = new THREE.Group(); shinPiv.position.set(0.3, -1.7, 0); L.add(shinPiv);
-        const shin = dbx(0.5, 1.7, 0.45); shin.position.set(-0.2, -0.85, 0); shin.rotation.z = -0.45; shinPiv.add(shin);
-        const foot = dbx(1.2, 0.35, 0.6); foot.position.set(-0.5, -1.65, 0); shinPiv.add(foot);
-        return { grp: L, shinPiv };
+      // belly line + a little hip mass so it doesn't read as a plain tube
+      dinoBody.add(blob(-1.4, 2.7, 1.05, 1.25));
+      dinoBody.add(blob(-0.2, 2.75, 1.0, 1.2));
+
+      // neck (S-curve up and forward) — its own pivot at the shoulders
+      const dnNeck = new THREE.Group();
+      dnNeck.position.set(1.9, 3.08, 0);
+      dinoBody.add(dnNeck);
+      const neck = [
+        [0.0, 0.0, 0.62], [0.45, 0.42, 0.54], [0.9, 0.75, 0.47],
+        [1.35, 0.92, 0.44], [1.75, 0.9, 0.44]
+      ];
+      for (let i = 0; i < neck.length; i++) {
+        const [x, y, r] = neck[i];
+        dnNeck.add(blob(x, y, r, 1.25));
+        if (i < neck.length - 1) {
+          const n = neck[i + 1];
+          dnNeck.add(bone(x, y, n[0], n[1], r * 0.9, n[2] * 0.9));
+        }
       }
-      const legB = makeLeg(-1.9), legF = makeLeg(-0.6);
+
+      // head — pivots at the base of the skull
+      const dnHeadPiv = new THREE.Group();
+      dnHeadPiv.position.set(1.75, 0.9, 0);
+      dnNeck.add(dnHeadPiv);
+      const skull = blob(0.55, -0.02, 0.5, 1.55); skull.scale.y = 0.82; dnHeadPiv.add(skull);
+      dnHeadPiv.add(bone(0.05, 0.0, 1.05, -0.12, 0.42, 0.34));   // muzzle top
+      const snoutTip = blob(1.25, -0.18, 0.26, 1.2); dnHeadPiv.add(snoutTip);
+      const brow = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.22, 0.62), dinoMat);
+      brow.position.set(0.45, 0.34, 0); brow.rotation.z = -0.12; dnHeadPiv.add(brow);
+      // lower jaw, slightly agape
+      const jaw = new THREE.Group();
+      jaw.position.set(0.1, -0.32, 0);
+      jaw.rotation.z = -0.16;
+      dnHeadPiv.add(jaw);
+      jaw.add(bone(0.0, 0.0, 1.05, 0.02, 0.2, 0.14));
+      const jawMass = new THREE.Mesh(new THREE.BoxGeometry(1.0, 0.26, 0.5), dinoMat);
+      jawMass.position.set(0.5, -0.02, 0); jaw.add(jawMass);
+
+      // digitigrade hind leg: thigh forward-down, shin back-down, upright
+      // metatarsus, splayed toes on the ground. shinPiv drives the buckle.
+      // digitigrade stance: near-vertical thigh, shin raked back, upright
+      // metatarsus, flat forward-splayed toes. Tuned so the toes sit on y=0.
+      function makeLeg(z, fwd) {
+        const grp = new THREE.Group();
+        grp.position.set(-1.5 + fwd, 3.15, z);
+        grp.add(bone(0, 0, 0.32, -1.25, 0.5, 0.32, 0));          // thigh
+        grp.add(blob(0, 0, 0.48, 1)); grp.add(blob(0.32, -1.25, 0.32, 1));
+        const shinPiv = new THREE.Group();
+        shinPiv.position.set(0.32, -1.25, 0);
+        grp.add(shinPiv);
+        shinPiv.add(bone(0, 0, -0.42, -1.15, 0.3, 0.18, 0));     // shin
+        shinPiv.add(blob(-0.42, -1.15, 0.17, 1));
+        shinPiv.add(bone(-0.42, -1.15, -0.2, -1.9, 0.16, 0.12, 0)); // metatarsus
+        const foot = new THREE.Group();
+        foot.position.set(-0.2, -1.9, 0);
+        shinPiv.add(foot);
+        for (let ti = -1; ti <= 1; ti++) {
+          foot.add(bone(0, 0, 0.6, -0.02, 0.12, 0.055, ti * 0.15));
+        }
+        foot.add(bone(0, 0, -0.32, -0.02, 0.1, 0.05, 0));        // hallux
+        return { grp, shinPiv };
+      }
+      const legF = makeLeg(-0.58, 0.12);   // near leg, planted slightly forward
+      const legB = makeLeg(0.58, -0.3);    // far leg, set back
       dinoBody.add(legB.grp, legF.grp);
-      const dnArm = dbx(0.9, 0.3, 0.3); dnArm.position.set(0.7, 2.6, 0); dnArm.rotation.z = -0.7; dinoBody.add(dnArm);
-      dino.position.set(0.5, -0.5, -12);
-      dino.rotation.y = -0.12;
-      dino.scale.setScalar(1.5);
+
+      // vestigial two-fingered forelimbs
+      function makeArm(z) {
+        const a = new THREE.Group();
+        a.position.set(1.15, 2.55, z);
+        a.rotation.z = -0.5;
+        a.add(bone(0, 0, 0.55, -0.5, 0.16, 0.11));
+        a.add(bone(0.55, -0.5, 1.0, -0.62, 0.11, 0.08));
+        a.add(bone(1.0, -0.62, 1.28, -0.5, 0.06, 0.03, 0.05));
+        a.add(bone(1.0, -0.62, 1.26, -0.72, 0.06, 0.03, -0.05));
+        return a;
+      }
+      dinoBody.add(makeArm(-0.45), makeArm(0.45));
+
+      dino.position.set(0.5, 0, -12);
+      dino.rotation.y = -0.16;
+      dino.scale.setScalar(1.3);
       groundScene.add(dino);
 
       function resetGround() {
         hud.veil.style.opacity = 0;
         dinoMat.opacity = 1;
-        dino.position.set(0.5, -0.5, -12);
-        dino.rotation.set(0, -0.12, 0);
+        dino.position.set(0.5, 0, -12);
+        dino.rotation.set(0, -0.16, 0);
         dinoBody.position.y = 0;
-        dnNeck.rotation.z = -0.15;
-        dnHeadPiv.rotation.z = 0.1;
+        dnNeck.rotation.z = 0;
+        dnHeadPiv.rotation.set(0, 0, 0);
         legB.shinPiv.rotation.z = 0;
-        legF.shinPiv.rotation.z = 0;
+        legF.shinPiv.rotation.z = 0.05;
         groundScene.fog.density = 0.022;
         groundScene.fog.color.set(0x7a7062);
         groundScene.background.set(0x7a7062);
@@ -2799,27 +2889,32 @@
         // stands → lies down → gone
         const idle = reduceMotion ? 0 : Math.sin(t * 1.1);
         if (pe < 0.5) {
-          dinoBody.position.y = idle * 0.05;
-          dnNeck.rotation.z = -0.15 + idle * 0.04;
-          dnHeadPiv.rotation.z = 0.1 + (reduceMotion ? 0 : Math.sin(t * 0.7) * 0.06);
-          dino.rotation.z = 0;
-          dino.position.y = -0.5;
+          // standing in the rain: slow breathing, head sways, weight shifts
+          dinoBody.position.y = idle * 0.055;
+          dnNeck.rotation.z = idle * 0.05;
+          dnHeadPiv.rotation.z = (reduceMotion ? 0 : Math.sin(t * 0.7) * 0.07);
+          dnHeadPiv.rotation.y = (reduceMotion ? 0 : Math.sin(t * 0.45) * 0.12);
+          dino.rotation.x = 0; dino.rotation.z = 0;
+          dino.position.y = 0;
           legB.shinPiv.rotation.z = 0;
-          legF.shinPiv.rotation.z = 0;
+          legF.shinPiv.rotation.z = 0.05 + idle * 0.04;
           dinoMat.opacity = 1;
         } else if (pe < 0.82) {
+          // knees give out, it rolls onto its side, neck and head go down last
           const k = ease((pe - 0.5) / 0.32);
           dinoBody.position.y = 0;
-          dnNeck.rotation.z = THREE.MathUtils.lerp(-0.15, 0.95, k);
-          dnHeadPiv.rotation.z = THREE.MathUtils.lerp(0.1, 0.65, k);
-          dino.rotation.z = THREE.MathUtils.lerp(0, 0.52, k);
-          dino.position.y = THREE.MathUtils.lerp(-0.5, -1.4, k);
-          legB.shinPiv.rotation.z = THREE.MathUtils.lerp(0, 1.35, k);
-          legF.shinPiv.rotation.z = THREE.MathUtils.lerp(0, 1.05, k);
+          dnHeadPiv.rotation.y = 0;
+          dnNeck.rotation.z = THREE.MathUtils.lerp(0, -1.15, k);
+          dnHeadPiv.rotation.z = THREE.MathUtils.lerp(0, -0.55, k);
+          dino.rotation.x = THREE.MathUtils.lerp(0, -1.25, k);   // topples toward camera
+          dino.rotation.z = THREE.MathUtils.lerp(0, -0.18, k);
+          dino.position.y = THREE.MathUtils.lerp(0, -1.5, k);
+          legB.shinPiv.rotation.z = THREE.MathUtils.lerp(0, 1.5, k);
+          legF.shinPiv.rotation.z = THREE.MathUtils.lerp(0.05, 1.2, k);
           dinoMat.opacity = 1;
         } else {
           const k = ease((pe - 0.82) / 0.18);
-          dino.position.y = -1.4 - k * 1.7;
+          dino.position.y = -1.5 - k * 1.9;                      // sinks into the murk
           dinoMat.opacity = 1 - k;
         }
       }
