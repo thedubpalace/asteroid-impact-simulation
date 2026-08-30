@@ -237,12 +237,13 @@
     @media (max-width: 820px) {
       header { top: 16px; left: 16px; }
       .panel {
-        top: auto; right: 16px; left: 16px; width: auto; bottom: 118px;
-        /* reserve room for the header above (kicker+title+lede, ~150px) so a
-           tall, scrolled-open Layers list can't grow up into overlapping it */
-        max-height: calc(100vh - 118px - 150px); display: flex; flex-direction: column;
+        /* anchor below the header and hold ~195px clear at the bottom for the
+           stacked footer (phase name + 2-line copy + bar + Replay button);
+           the body scrolls inside whatever height is left */
+        top: 128px; bottom: 195px; right: 16px; left: 16px; width: auto;
+        max-height: none; display: flex; flex-direction: column;
       }
-      body.pane-min .panel { left: auto; right: 16px; bottom: 118px; }
+      body.pane-min .panel { top: 128px; bottom: auto; left: auto; right: 16px; }
       .panel-body { overflow-y: auto; -webkit-overflow-scrolling: touch; }
       footer { left: 16px; right: 16px; bottom: 16px; flex-direction: column; align-items: stretch; }
       h1 { font-size: 34px; }
