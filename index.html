@@ -293,7 +293,7 @@
               <summary>↳ sub-components</summary>
               <label class="check sub"><input type="checkbox" id="layer-floor-albedo" checked /> Albedo (colour map)</label>
               <label class="check sub"><input type="checkbox" id="layer-floor-emit" checked /> Emissive glow (craterEmit)</label>
-              <label class="check sub"><input type="checkbox" id="layer-floor-rough" checked /> Roughness map</label>
+              <label class="check sub"><input type="checkbox" id="layer-floor-rough" /> Roughness map (glassy sheen)</label>
               <label class="check sub"><input type="checkbox" id="layer-floor-vcolor" checked /> Vertex tint (melt/ash)</label>
               <label class="check sub"><input type="checkbox" id="layer-floor-see" /> See-through (low opacity)</label>
             </details>
@@ -1168,7 +1168,7 @@
       const craterFloor = new THREE.Mesh(
         craterGeo,
         new THREE.MeshStandardMaterial({
-          map: craterMap, emissiveMap: craterEmit, roughnessMap: craterRough, vertexColors: true,
+          map: craterMap, emissiveMap: craterEmit, vertexColors: true,
           // depthWrite must stay on: this mesh is what boulders rest against —
           // without it writing depth, nothing drawn after it (the boulders'
           // buried lower half especially) gets occluded, so rock reads as
@@ -1177,7 +1177,12 @@
           // the moment alpha dropped below 6%, well before the eased rim
           // fade actually reached zero, and read as a hard-cut ring
           transparent: true, alphaTest: 0.008, depthWrite: true,
-          roughness: 0.9, metalness: 0.12,
+          // No roughnessMap by default — its glassy low-roughness centre + the
+          // hard directional sun threw a broad white specular sheen that read
+          // as a "film" laid over the floor (import build has none). Matte,
+          // near-zero metalness matches import. The debug panel's "Roughness
+          // map" sub-toggle still re-attaches craterRough for inspection.
+          roughness: 0.9, metalness: 0.04,
           emissive: 0xff6a18, emissiveIntensity: 0
         })
       );
