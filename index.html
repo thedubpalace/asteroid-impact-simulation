@@ -2690,12 +2690,13 @@
         new THREE.PointsMaterial({ color: 0x7a7266, size: 0.14, transparent: true, opacity: 0.5 }));
       groundScene.add(ashPts);
 
-      // The dinosaur is a Quaternius model — "Animated Dinosaur Bundle" T-Rex,
-      // CC0 / public domain, via Poly Pizza (poly.pizza/u/Quaternius). Shipped
-      // as models/trex.glb (FBX2glTF, CharacterArmature with Idle/Walk/Death
-      // clips). Loaded async; until it arrives dinoModel is null and
-      // updateGround skips it. Every mesh is re-materialled to a flat near-black
-      // so it silhouettes in the fog like everything else in this scene.
+      // The dinosaur is a Quaternius model — the "T-Rex" from the Animated
+      // Dinosaur Bundle, CC0 / public domain, via Poly Pizza
+      // (poly.pizza/u/Quaternius). Shipped as models/trex.glb (Armature with
+      // TRex_Idle / TRex_Walk / TRex_Death clips). Loaded async; until it
+      // arrives dinoModel is null and updateGround skips it. Every mesh is
+      // re-materialled to a flat near-black so it silhouettes in the fog like
+      // everything else in this scene.
       const dino = new THREE.Group();
       dino.position.set(0.5, 0, -12);
       groundScene.add(dino);
@@ -2706,17 +2707,25 @@
       });
       new THREE.GLTFLoader().load('models/trex.glb', (gltf) => {
         dinoModel = gltf.scene;
-        dinoModel.traverse((o) => { if (o.isMesh) { o.material = dinoMat; o.castShadow = false; } });
-        dinoModel.scale.setScalar(3.3);
-        dinoModel.rotation.y = -Math.PI / 2 - 0.25;   // side-on profile, facing screen-right
+        dinoModel.traverse((o) => { if (o.isMesh) { o.material = dinoMat; o.castShadow = false; o.frustumCulled = false; } });
+        // FBX2glTF bakes an arbitrary unit scale into the rig — measure the
+        // rest-pose bounds and normalise to a fixed on-screen height, feet on y=0
+        dinoModel.rotation.y = -Math.PI / 2 - 0.2;    // side-on profile, facing screen-right
         dino.add(dinoModel);
+        const bb = new THREE.Box3().setFromObject(dinoModel);
+        const s = 6.0 / Math.max(0.001, bb.max.y - bb.min.y);
+        dinoModel.scale.multiplyScalar(s);
+        const bb2 = new THREE.Box3().setFromObject(dinoModel);
+        dinoModel.position.x -= (bb2.min.x + bb2.max.x) / 2;
+        dinoModel.position.z -= (bb2.min.z + bb2.max.z) / 2;
+        dinoModel.position.y -= bb2.min.y;
         dinoMixer = new THREE.AnimationMixer(dinoModel);
         const byName = (n) => THREE.AnimationClip.findByName(gltf.animations, n);
-        dinoIdle = dinoMixer.clipAction(byName('CharacterArmature|Idle'));
-        dinoDeath = dinoMixer.clipAction(byName('CharacterArmature|Death'));
+        dinoIdle = dinoMixer.clipAction(byName('Armature|TRex_Idle'));
+        dinoDeath = dinoMixer.clipAction(byName('Armature|TRex_Death'));
         dinoDeath.clampWhenFinished = true;
         dinoDeath.loop = THREE.LoopOnce;
-        dinoDeathDur = byName('CharacterArmature|Death').duration;
+        dinoDeathDur = byName('Armature|TRex_Death').duration;
         dinoIdle.play();
       });
 
