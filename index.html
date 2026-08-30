@@ -1169,20 +1169,17 @@
         craterGeo,
         new THREE.MeshStandardMaterial({
           map: craterMap, emissiveMap: craterEmit, vertexColors: true,
-          // depthWrite must stay on: this mesh is what boulders rest against —
-          // without it writing depth, nothing drawn after it (the boulders'
-          // buried lower half especially) gets occluded, so rock reads as
-          // floating on top of the ground instead of sitting embedded in it.
-          // alphaTest stays tiny (not the old 0.06) — that discarded pixels
-          // the moment alpha dropped below 6%, well before the eased rim
-          // fade actually reached zero, and read as a hard-cut ring
-          transparent: true, alphaTest: 0.008, depthWrite: true,
+          // Opaque with normal depth writes, like the import build. Leaving it
+          // `transparent:true` made Three.js sort it in the transparent pass
+          // against the melt/ejecta/boulder meshes at the same spot; the
+          // unstable draw order there was what smeared the lit floor + its
+          // emissive into a flat pale "film" over the bowl. polygonOffset keeps
+          // it from z-fighting the ejecta blanket at the shared rim.
+          depthWrite: true,
+          polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1,
           // No roughnessMap by default — its glassy low-roughness centre + the
-          // hard directional sun threw a broad white specular sheen that read
-          // as a "film" laid over the floor (import build has none). Matte,
-          // near-zero metalness matches import. The debug panel's "Roughness
-          // map" sub-toggle still re-attaches craterRough for inspection.
-          roughness: 0.9, metalness: 0.04,
+          // hard directional sun threw a specular sheen that added to the film.
+          roughness: 0.82, metalness: 0.02,
           emissive: 0xff6a18, emissiveIntensity: 0
         })
       );
@@ -2006,8 +2003,9 @@
         () => { craterFloor.material.vertexColors = true; },
         () => { craterFloor.material.vertexColors = false; });
       wireMaterialToggle('layer-floor-see',
-        () => { craterFloor.material.opacity = 0.18; },
-        () => { craterFloor.material.opacity = 1; });
+        // floor is opaque by default now — flip transparent on to preview it
+        () => { craterFloor.material.transparent = true; craterFloor.material.opacity = 0.18; },
+        () => { craterFloor.material.transparent = false; craterFloor.material.opacity = 1; });
       wireLayerToggle('layer-boulders', [boulderGroup]);
       wireLayerToggle('layer-melt', [meltPool, meltHalo, meltOuter]);
       wireLayerToggle('layer-ejecta', [ejectaFan]);
@@ -2621,16 +2619,11 @@
 
           flashOrb.intensity = pulse * 36 + melt * 7;
           fillOrb.intensity = pulse * 22 + melt * 5;
-          // the 2.2 baseline never decayed — every other glow term above
-          // fades with pulse/melt, but this point light floodlit the crater
-          // floor at full brightness forever, which is what actually painted
-          // it as a flat, featureless pale disc no alpha/colour fix could touch.
-          // First attempt (exp(-ft*0.015)) decayed far too slowly to matter
-          // within the sim's actual runtime — quadratic to zero over the same
-          // ~10-unit window the rest of the crater already uses to fully cool
-          const lightCool = clamp01((ft - 1.6) / 10);
-          const emberBase = 2.2 * (1 - lightCool) * (1 - lightCool);
-          craterLight.intensity = emberBase + pulse * 7.5 + melt * 3.2;
+          // Keep a steady ember baseline like the import build — the crater
+          // stays a warm-lit bowl instead of going pitch black once the sun
+          // dims. (An earlier decay-to-zero here left the parked floor emissive
+          // as the only lit thing at the site, which read as a pale film.)
+          craterLight.intensity = 2.2 + pulse * 7.5 + melt * 3.2;
           atmo.material.uniforms.impactGlow.value = pulse * 1.35 + melt * 0.32;
 
           // exposure pop then settle
