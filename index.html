@@ -37,6 +37,10 @@
       position: absolute; inset: 0; opacity: 0; pointer-events: none;
       background: transparent;
     }
+    .veil {
+      position: absolute; inset: 0; opacity: 0; pointer-events: none;
+      background: #000; z-index: 25;
+    }
     .letterbox {
       position: absolute; left: 0; right: 0; height: 50vh; background: #000;
       pointer-events: none; z-index: 20;
@@ -255,6 +259,9 @@
     <div class="vignette"></div>
     <div class="flash" id="flash"></div>
     <div class="heat" id="heat"></div>
+    <!-- opaque black wipe used to hide the cut from the orbital view to the
+         ground-level extinction scene (two separate Three scenes) -->
+    <div class="veil" id="veil"></div>
     <div class="letterbox top"></div>
     <div class="letterbox bot"></div>
     <canvas class="grain" id="grain"></canvas>
@@ -366,7 +373,10 @@
           t0: 14.2, t1: 20.5 },
         { id: 'winter', name: 'Nuclear winter', hud: 'Global Winter',
           copy: 'Soot and pulverised bedrock veil the planet. Sunlight collapses. The long night of the K–Pg extinction begins.',
-          t0: 20.5, t1: 34 }
+          t0: 20.5, t1: 34 },
+        { id: 'extinction', name: 'The long night', hud: 'Extinction',
+          copy: 'Down on the surface: no sunrise for years, acid rain in the dark. Photosynthesis stalls and food webs collapse from the plants up. Three in four species vanish — every non-avian dinosaur among them.',
+          t0: 34, t1: 50 }
       ];
 
       const hud = {
@@ -378,7 +388,8 @@
         copy: document.getElementById('phase-copy'),
         progress: document.getElementById('progress'),
         flash: document.getElementById('flash'),
-        heat: document.getElementById('heat')
+        heat: document.getElementById('heat'),
+        veil: document.getElementById('veil')
       };
 
       const startBtn = document.getElementById('start');
@@ -2251,6 +2262,7 @@
         smoke.mat.uniforms.uOpacity.value = 0.72;
         soot.mat.uniforms.uOpacity.value = 0.8;
         mistFine.mat.uniforms.uOpacity.value = 0.55;
+        resetGround();
         if (typeof snapCamera === 'function') snapCamera();
       }
       const paneToggle = document.getElementById('pane-toggle');
@@ -2498,6 +2510,298 @@
         return km.toFixed(0) + ' km';
       }
 
+      // ---- Ground-level extinction scene ---------------------------------
+      // After the orbital "nuclear winter" beat the film cuts (through a black
+      // wipe) down to the forest floor under the dust pall: dark, ash and acid
+      // rain, one theropod that lies down and does not get up. This is a
+      // separate THREE.Scene with its own camera/fog/lights, rendered instead
+      // of the globe once simTime passes EXT_T0.
+      const EXT_T0 = 34, EXT_T1 = 50;
+      const groundScene = new THREE.Scene();
+      // a pale ash-grey sky/haze is the whole point — the forest and the animal
+      // read as dark silhouettes against it, then it drains to black
+      groundScene.background = new THREE.Color(0x726a5c);
+      groundScene.fog = new THREE.FogExp2(0x726a5c, 0.013);
+      const groundCam = new THREE.PerspectiveCamera(52, window.innerWidth / window.innerHeight, 0.1, 700);
+
+      // starts as a grim overcast dusk you can actually read, then collapses to
+      // black over the back half of the phase as the light dies for good
+      const groundAmb = new THREE.AmbientLight(0x3a342c, 0.8);
+      const groundKey = new THREE.DirectionalLight(0x9a8b72, 1.6); // diffuse — flat grey lid, no sun disc
+      groundKey.position.set(-16, 34, 20);
+      const groundHemi = new THREE.HemisphereLight(0x5e5548, 0x141009, 0.75);
+      groundScene.add(groundAmb, groundKey, groundHemi);
+
+      const groundSky = new THREE.Mesh(
+        new THREE.SphereGeometry(320, 32, 24),
+        new THREE.MeshBasicMaterial({
+          side: THREE.BackSide, fog: false, depthWrite: false, toneMapped: false,
+          map: canvasTex((ctx, w, h) => {
+            // sunless ash overcast — dark overhead, a bright bruised band at the
+            // horizon so the forest and the animal read as hard silhouettes
+            const g = ctx.createLinearGradient(0, 0, 0, h);
+            g.addColorStop(0.0, '#22201d'); g.addColorStop(0.42, '#3a352f');
+            g.addColorStop(0.68, '#6f6353'); g.addColorStop(0.84, '#a99a7e');
+            g.addColorStop(0.93, '#b8a074'); g.addColorStop(1.0, '#6e5c46');
+            ctx.fillStyle = g; ctx.fillRect(0, 0, w, h);
+            for (let i = 0; i < 260; i++) {
+              ctx.fillStyle = `rgba(18,15,12,${0.05 + Math.random() * 0.12})`;
+              ctx.beginPath();
+              ctx.ellipse(Math.random() * w, h * (0.2 + Math.random() * 0.8),
+                50 + Math.random() * 160, 14 + Math.random() * 48, 0, 0, 7);
+              ctx.fill();
+            }
+          }, 1024, 512)
+        })
+      );
+      groundScene.add(groundSky);
+
+      const emberBand = new THREE.Mesh(
+        new THREE.PlaneGeometry(700, 48),
+        new THREE.MeshBasicMaterial({
+          color: 0xff6a24, transparent: true, opacity: 0.4, fog: false,
+          toneMapped: false, blending: THREE.AdditiveBlending, depthWrite: false
+        })
+      );
+      emberBand.position.set(0, 2.5, -140);
+      groundScene.add(emberBand);
+
+      const floorTex = canvasTex((ctx, w, h) => {
+        ctx.fillStyle = '#332e26'; ctx.fillRect(0, 0, w, h);
+        for (let i = 0; i < 5200; i++) {
+          const r = Math.random(), v = 26 + Math.random() * 34;
+          ctx.fillStyle = r < 0.7 ? `rgb(${v | 0},${v * 0.88 | 0},${v * 0.64 | 0})`
+            : r < 0.9 ? `rgba(66,74,46,${0.12 + Math.random() * 0.22})`
+              : `rgba(${150 + Math.random() * 60 | 0},${138 + Math.random() * 50 | 0},128,${0.08 + Math.random() * 0.16})`;
+          ctx.fillRect(Math.random() * w, Math.random() * h, 1 + Math.random() * 2, 1 + Math.random() * 2);
+        }
+      }, 1024, 1024);
+      floorTex.wrapS = floorTex.wrapT = THREE.RepeatWrapping;
+      floorTex.repeat.set(8, 8);
+      const floorGeo = new THREE.PlaneGeometry(420, 420, 60, 60);
+      const fpos = floorGeo.attributes.position;
+      for (let i = 0; i < fpos.count; i++) {
+        const x = fpos.getX(i), y = fpos.getY(i);
+        fpos.setZ(i, (fbm(x * 0.03 + 10, y * 0.03 - 4) - 0.5) * 3.0 + (fbm(x * 0.12, y * 0.12) - 0.5) * 0.8);
+      }
+      floorGeo.computeVertexNormals();
+      const forestFloor = new THREE.Mesh(floorGeo,
+        new THREE.MeshStandardMaterial({ map: floorTex, roughness: 1, metalness: 0 }));
+      forestFloor.rotation.x = -Math.PI / 2;
+      groundScene.add(forestFloor);
+
+      function makeTree(burnt) {
+        const g = new THREE.Group();
+        const th = 4 + Math.random() * 5.5;
+        const trunk = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.15, 0.42, th, 6),
+          new THREE.MeshStandardMaterial({ color: burnt ? 0x0c0a09 : 0x241a12, roughness: 1 })
+        );
+        trunk.position.y = th / 2;
+        g.add(trunk);
+        if (!burnt) {
+          const tiers = 3 + (Math.random() * 2 | 0);
+          for (let k = 0; k < tiers; k++) {
+            const f = k / tiers;
+            const cone = new THREE.Mesh(
+              new THREE.ConeGeometry(2.4 * (1 - f * 0.55), 3.4 * (1 - f * 0.3), 7),
+              new THREE.MeshStandardMaterial({
+                color: new THREE.Color().setHSL(0.28, 0.16, 0.08 + f * 0.02), roughness: 1
+              })
+            );
+            cone.position.y = th * 0.5 + k * (th * 0.16) + 1.2;
+            g.add(cone);
+          }
+        }
+        return g;
+      }
+      const treeGroup = new THREE.Group();
+      for (let i = 0; i < 40; i++) {
+        const tr = makeTree(Math.random() < 0.25);
+        const ang = Math.random() * Math.PI * 2;
+        const rad = 12 + Math.random() * 120;
+        // bias trees into the camera's forward (-Z) half so the view reads as
+        // forest; keep a clear-ish lane down the middle for the animal
+        let px = Math.cos(ang) * rad;
+        let pz = -Math.abs(Math.sin(ang) * rad) - 8;
+        // keep a clear pocket around the animal and in front of the camera
+        if (pz > 12) pz -= 40;                                   // nothing behind the lens
+        if (Math.abs(px - 3) < 9 && pz > -24) px += (px < 3 ? -12 : 12);
+        tr.position.set(px, 0, pz);
+        tr.scale.setScalar(0.8 + Math.random() * 1.0);
+        tr.rotation.y = Math.random() * Math.PI;
+        if (Math.random() < 0.16) tr.rotation.z = (Math.random() - 0.5) * 0.5;
+        treeGroup.add(tr);
+      }
+      groundScene.add(treeGroup);
+
+      const RAIN = 2800, RAIN_BOX = 62;
+      const rainPos = new Float32Array(RAIN * 6);
+      const rainState = [];
+      for (let i = 0; i < RAIN; i++) {
+        const s = {
+          x: (Math.random() - 0.5) * RAIN_BOX * 2, y: Math.random() * 42,
+          z: -Math.random() * 95 - 2, len: 0.5 + Math.random() * 0.9, v: 34 + Math.random() * 22
+        };
+        rainState.push(s);
+        rainPos[i * 6] = s.x; rainPos[i * 6 + 1] = s.y; rainPos[i * 6 + 2] = s.z;
+        rainPos[i * 6 + 3] = s.x + 0.13; rainPos[i * 6 + 4] = s.y - s.len; rainPos[i * 6 + 5] = s.z;
+      }
+      const rainGeo = new THREE.BufferGeometry();
+      rainGeo.setAttribute('position', new THREE.BufferAttribute(rainPos, 3));
+      const rain = new THREE.LineSegments(rainGeo,
+        new THREE.LineBasicMaterial({ color: 0x9db0c2, transparent: true, opacity: 0.32 }));
+      groundScene.add(rain);
+
+      const ASH = 900;
+      const ashPos = new Float32Array(ASH * 3);
+      const ashState = [];
+      for (let i = 0; i < ASH; i++) {
+        const a = {
+          x: (Math.random() - 0.5) * 130, y: Math.random() * 46,
+          z: -Math.random() * 105 - 2, v: 1.4 + Math.random() * 2.2, sw: Math.random() * 6.28
+        };
+        ashState.push(a);
+        ashPos[i * 3] = a.x; ashPos[i * 3 + 1] = a.y; ashPos[i * 3 + 2] = a.z;
+      }
+      const ashGeo = new THREE.BufferGeometry();
+      ashGeo.setAttribute('position', new THREE.BufferAttribute(ashPos, 3));
+      const ashPts = new THREE.Points(ashGeo,
+        new THREE.PointsMaterial({ color: 0x7a7266, size: 0.14, transparent: true, opacity: 0.5 }));
+      groundScene.add(ashPts);
+
+      // theropod silhouette from box primitives — near-black, side-on
+      const dinoMat = new THREE.MeshStandardMaterial({
+        color: 0x070708, roughness: 1, metalness: 0, transparent: true, opacity: 1
+      });
+      const dbx = (w, h, d) => new THREE.Mesh(new THREE.BoxGeometry(w, h, d), dinoMat);
+      const dino = new THREE.Group();
+      const dinoBody = new THREE.Group();
+      dino.add(dinoBody);
+      const dnTorso = dbx(3.4, 1.7, 1.3); dnTorso.position.set(0, 3.1, 0); dnTorso.rotation.z = 0.06; dinoBody.add(dnTorso);
+      const dnHip = dbx(1.5, 1.8, 1.35); dnHip.position.set(-1.5, 3.0, 0); dinoBody.add(dnHip);
+      const dnNeck = new THREE.Group(); dnNeck.position.set(1.5, 3.7, 0); dinoBody.add(dnNeck);
+      const dnNeckSeg = dbx(1.7, 0.9, 0.8); dnNeckSeg.position.set(0.7, 0.5, 0); dnNeckSeg.rotation.z = -0.5; dnNeck.add(dnNeckSeg);
+      const dnHeadPiv = new THREE.Group(); dnHeadPiv.position.set(1.5, 1.05, 0); dnNeck.add(dnHeadPiv);
+      const dnHead = dbx(1.5, 0.8, 0.62); dnHead.position.set(0.5, 0, 0); dnHeadPiv.add(dnHead);
+      const dnJaw = dbx(1.1, 0.28, 0.5); dnJaw.position.set(0.55, -0.45, 0); dnHeadPiv.add(dnJaw);
+      const dnTail = new THREE.Group(); dnTail.position.set(-2.1, 3.2, 0); dinoBody.add(dnTail);
+      let dnTseg = dnTail;
+      for (let k = 0; k < 4; k++) {
+        const t2 = new THREE.Group(); t2.position.set(-1.3, 0, 0); t2.rotation.z = 0.05;
+        const ts = dbx(1.5 - k * 0.28, 0.9 - k * 0.16, 0.7 - k * 0.12); ts.position.set(-0.6, 0, 0);
+        t2.add(ts); dnTseg.add(t2); dnTseg = t2;
+      }
+      function makeLeg(px) {
+        const L = new THREE.Group(); L.position.set(px, 3.0, 0);
+        const thigh = dbx(0.7, 1.9, 0.6); thigh.position.set(0, -0.8, 0); thigh.rotation.z = 0.25; L.add(thigh);
+        const shinPiv = new THREE.Group(); shinPiv.position.set(0.3, -1.7, 0); L.add(shinPiv);
+        const shin = dbx(0.5, 1.7, 0.45); shin.position.set(-0.2, -0.85, 0); shin.rotation.z = -0.45; shinPiv.add(shin);
+        const foot = dbx(1.2, 0.35, 0.6); foot.position.set(-0.5, -1.65, 0); shinPiv.add(foot);
+        return { grp: L, shinPiv };
+      }
+      const legB = makeLeg(-1.9), legF = makeLeg(-0.6);
+      dinoBody.add(legB.grp, legF.grp);
+      const dnArm = dbx(0.9, 0.3, 0.3); dnArm.position.set(0.7, 2.6, 0); dnArm.rotation.z = -0.7; dinoBody.add(dnArm);
+      dino.position.set(0.5, -0.5, -12);
+      dino.rotation.y = -0.12;
+      dino.scale.setScalar(1.5);
+      groundScene.add(dino);
+
+      function resetGround() {
+        hud.veil.style.opacity = 0;
+        dinoMat.opacity = 1;
+        dino.position.set(0.5, -0.5, -12);
+        dino.rotation.set(0, -0.12, 0);
+        dinoBody.position.y = 0;
+        dnNeck.rotation.z = -0.15;
+        dnHeadPiv.rotation.z = 0.1;
+        legB.shinPiv.rotation.z = 0;
+        legF.shinPiv.rotation.z = 0;
+        groundScene.fog.density = 0.013;
+        groundScene.fog.color.set(0x726a5c);
+        groundScene.background.set(0x726a5c);
+      }
+
+      function updateGround(t) {
+        const pe = clamp01((t - EXT_T0) / (EXT_T1 - EXT_T0));
+        const dt = 1 / 60;
+
+        // hold a readable gloom for the first ~55%, then let it fall toward
+        // (not quite) black — a last ember and the rain stay barely visible
+        const dk = ease(clamp01((pe - 0.55) / 0.45));
+        groundKey.intensity = THREE.MathUtils.lerp(1.6, 0.1, dk);
+        groundAmb.intensity = THREE.MathUtils.lerp(0.9, 0.12, dk);
+        groundHemi.intensity = THREE.MathUtils.lerp(0.9, 0.12, dk);
+        groundScene.fog.density = THREE.MathUtils.lerp(0.013, 0.045, ease(pe));
+        const murk = new THREE.Color(0x726a5c).lerp(new THREE.Color(0x050404), dk);
+        groundScene.fog.color.copy(murk);
+        groundScene.background.copy(murk);
+        const sd = 1 - dk * 0.9;
+        groundSky.material.color.setRGB(sd, sd, sd);
+        emberBand.material.opacity = 0.34 * (1 - clamp01(pe / 0.7));
+        renderer.toneMappingExposure = THREE.MathUtils.lerp(1.05, 0.5, dk);
+
+        const cz = THREE.MathUtils.lerp(17, 12.5, ease(pe));
+        const cy = THREE.MathUtils.lerp(3.0, 2.4, pe);
+        groundCam.position.set(
+          -4.5 + Math.sin(t * 0.11) * 0.5,
+          cy + (reduceMotion ? 0 : Math.sin(t * 1.7) * 0.03),
+          cz
+        );
+        // frame the animal (near z-12) against the horizon band; drift the
+        // look-point down as it collapses
+        groundCam.lookAt(0.5, 2.6 - pe * 1.5, -12);
+
+        for (let i = 0; i < RAIN; i++) {
+          const s = rainState[i];
+          s.y -= s.v * dt;
+          s.x += 2.2 * dt;
+          if (s.y < -1) { s.y = 34 + Math.random() * 8; s.x = (Math.random() - 0.5) * RAIN_BOX * 2; }
+          if (s.x > RAIN_BOX) s.x -= RAIN_BOX * 2;
+          rainPos[i * 6] = s.x; rainPos[i * 6 + 1] = s.y; rainPos[i * 6 + 2] = s.z;
+          rainPos[i * 6 + 3] = s.x + 0.14; rainPos[i * 6 + 4] = s.y - s.len; rainPos[i * 6 + 5] = s.z;
+        }
+        rainGeo.attributes.position.needsUpdate = true;
+        rain.material.opacity = 0.32 * (0.7 + pe * 0.3);
+
+        for (let i = 0; i < ASH; i++) {
+          const a = ashState[i];
+          a.y -= a.v * dt; a.sw += dt;
+          a.x += Math.sin(a.sw) * 0.6 * dt + 0.4 * dt;
+          if (a.y < -1) { a.y = 44 + Math.random() * 6; a.x = (Math.random() - 0.5) * 130; }
+          ashPos[i * 3] = a.x; ashPos[i * 3 + 1] = a.y; ashPos[i * 3 + 2] = a.z;
+        }
+        ashGeo.attributes.position.needsUpdate = true;
+
+        // stands → lies down → gone
+        const idle = reduceMotion ? 0 : Math.sin(t * 1.1);
+        if (pe < 0.5) {
+          dinoBody.position.y = idle * 0.05;
+          dnNeck.rotation.z = -0.15 + idle * 0.04;
+          dnHeadPiv.rotation.z = 0.1 + (reduceMotion ? 0 : Math.sin(t * 0.7) * 0.06);
+          dino.rotation.z = 0;
+          dino.position.y = -0.5;
+          legB.shinPiv.rotation.z = 0;
+          legF.shinPiv.rotation.z = 0;
+          dinoMat.opacity = 1;
+        } else if (pe < 0.82) {
+          const k = ease((pe - 0.5) / 0.32);
+          dinoBody.position.y = 0;
+          dnNeck.rotation.z = THREE.MathUtils.lerp(-0.15, 0.95, k);
+          dnHeadPiv.rotation.z = THREE.MathUtils.lerp(0.1, 0.65, k);
+          dino.rotation.z = THREE.MathUtils.lerp(0, 0.52, k);
+          dino.position.y = THREE.MathUtils.lerp(-0.5, -1.4, k);
+          legB.shinPiv.rotation.z = THREE.MathUtils.lerp(0, 1.35, k);
+          legF.shinPiv.rotation.z = THREE.MathUtils.lerp(0, 1.05, k);
+          dinoMat.opacity = 1;
+        } else {
+          const k = ease((pe - 0.82) / 0.18);
+          dino.position.y = -1.4 - k * 1.7;
+          dinoMat.opacity = 1 - k;
+        }
+      }
+
       function tick(now) {
         const realDt = Math.min(0.05, lastDebris ? (now - lastDebris) / 1000 : 0.016);
         lastDebris = now;
@@ -2538,6 +2842,13 @@
         const dt = realDt * timeScale;
         const phase = currentPhase(t);
         const total = clamp01(t / PHASES[PHASES.length - 1].t1);
+
+        // black wipe over the cut from the globe to the ground scene
+        let veilA = 0;
+        if (t >= 33.2 && t < 33.95) veilA = ease(clamp01((t - 33.2) / 0.75));
+        else if (t >= 33.95 && t < 34.9) veilA = 1 - ease(clamp01((t - 33.95) / 0.95));
+        hud.veil.style.opacity = veilA.toFixed(3);
+        const onGround = t >= 33.6;
 
         // rotate Earth first, then derive a single shared impact site for camera/rock/fx
         earthGroup.rotation.y += 0.00055;
@@ -2829,6 +3140,14 @@
         }
         hud.progress.style.width = (total * 100).toFixed(1) + '%';
 
+        if (onGround) {
+          // ground scene owns the frame now — skip the globe camera rig
+          updateGround(t);
+          renderer.render(groundScene, groundCam);
+          requestAnimationFrame(tick);
+          return;
+        }
+
         if (introT < 2.2) {
           const u = ease(clamp01(introT / 2.2));
           const rig = cameraRig(camModeEl.value === 'free' ? 'cinematic' : camModeEl.value, t, hit, posA);
@@ -2848,6 +3167,8 @@
       window.addEventListener('resize', () => {
         camera.aspect = window.innerWidth / window.innerHeight;
         camera.updateProjectionMatrix();
+        groundCam.aspect = window.innerWidth / window.innerHeight;
+        groundCam.updateProjectionMatrix();
         renderer.setSize(window.innerWidth, window.innerHeight);
         sizeGrain();
       });
