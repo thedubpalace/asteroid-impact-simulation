@@ -2669,11 +2669,14 @@
             THREE.MathUtils.lerp(0.12, 0.03, cool)
           );
           craterFloor.material.emissiveIntensity = 1.15 + pulse * 3.4 + melt * 1.5 - cool * 0.55;
-          // the floor's base albedo never darkened with cool — only the glow did —
-          // so once scorch/ejecta ash the surrounding land, the crater interior kept
-          // its warm baked-in colour and read as a bare, un-ashed hole in the middle
-          const ashTint = THREE.MathUtils.lerp(1.0, 0.3, cool);
-          craterFloor.material.color.setRGB(ashTint, ashTint * 0.92, ashTint * 0.86);
+          // A light cool-down ash on the floor colour — the import build leaves
+          // this at full white, but a slight knock-back keeps the interior from
+          // reading as a bare un-ashed hole once the land around it scorches.
+          // Was lerp(1.0, 0.3): far too dark once the floor became opaque and
+          // its dark outer-zone albedo x vertex tint x this all stacked to near
+          // black. Keep it gentle.
+          const ashTint = THREE.MathUtils.lerp(1.0, 0.72, cool);
+          craterFloor.material.color.setRGB(ashTint, ashTint * 0.95, ashTint * 0.9);
           meltPool.material.opacity = Math.min(0.82, 0.22 + pulse * 0.52 + melt * 0.28) * (1 - cool * 0.55);
           meltHalo.material.opacity = Math.min(0.62, 0.14 + pulse * 0.38 + melt * 0.2) * (1 - cool * 0.48);
           meltOuter.material.opacity = Math.min(0.4, 0.08 + pulse * 0.22 + melt * 0.14) * (1 - cool * 0.4);
