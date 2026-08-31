@@ -1429,23 +1429,27 @@
         return geo;
       }
       const boulders = [];
-      const BOULDER_N = 42;
+      const BOULDER_N = 52;
       for (let i = 0; i < BOULDER_N; i++) {
         const seed = i * 3.71 + 1.3;
         const zone = i / BOULDER_N;
         let rad, size;
-        if (zone < 0.4) {
+        // block sizes are absolute world units tuned for the old crater — scale
+        // them with CRATER_RELIEF so a rim megablock stays a few % of the crater
+        // radius (km-scale on a ~90 km radius bowl), not a chunk of the peak ring
+        if (zone < 0.36) {
           // slumped terrace megablocks along the rim
           rad = CRATER_R * (0.58 + ((i * 13) % 9) / 9 * 0.24);
-          size = 0.013 + ((i * 7) % 5) * 0.0048;
-        } else if (zone < 0.85) {
-          // ejecta rubble scattered across the surrounding blanket
-          rad = CRATER_R * (0.86 + ((i * 17) % 13) / 13 * 0.5);
-          size = 0.006 + ((i * 11) % 5) * 0.0026;
+          size = (0.013 + ((i * 7) % 5) * 0.0048) * CRATER_RELIEF;
+        } else if (zone < 0.86) {
+          // ejecta rubble scattered across the surrounding blanket, thinning
+          // out to ~2 crater radii like a real continuous ejecta apron
+          rad = CRATER_R * (0.95 + ((i * 17) % 13) / 13 * 1.15);
+          size = (0.006 + ((i * 11) % 5) * 0.0026) * CRATER_RELIEF;
         } else {
           // sparse breccia-lens rubble on the floor, clear of the melt pool
           rad = CRATER_R * (0.32 + ((i * 19) % 7) / 7 * 0.2);
-          size = 0.008 + ((i * 5) % 4) * 0.003;
+          size = (0.008 + ((i * 5) % 4) * 0.003) * CRATER_RELIEF;
         }
         const ang = seed * 1.9 + Math.sin(i * 0.7) * 0.6;
         // x0/y0 are true terrain-local coords (what craterHeight expects to
@@ -1539,10 +1543,10 @@
             '  float day=smoothstep(-0.15,0.45,dot(n,normalize(sunDir)));',
             '  float term=pow(1.0-abs(dot(n,normalize(sunDir))), 3.0);',
             '  float hit=max(0.0, dot(n,normalize(impactDir)));',
-            '  float blast=pow(hit, 6.0)*impactGlow;',
+            '  float blast=pow(hit, 11.0)*impactGlow;',
             '  vec3 col=mix(glowColor, vec3(1.0,0.55,0.25), term*0.85);',
             '  col=mix(col, vec3(1.0,0.72,0.32), clamp(blast,0.0,1.0));',
-            '  float a=fres*(0.18+day*0.72+term*0.55+blast*1.4)*intensity;',
+            '  float a=fres*(0.18+day*0.72+term*0.55+blast*1.0)*intensity;',
             '  gl_FragColor=vec4(col, clamp(a,0.0,0.95));',
             '}'
           ].join('\n')
@@ -1761,10 +1765,10 @@
       );
       earthGroup.add(tsunami);
 
-      const flashOrb = new THREE.PointLight(0xfff4d0, 0, 9.5, 1.35);
+      const flashOrb = new THREE.PointLight(0xfff4d0, 0, 5.6, 1.35); // hard local flare, not a whole-planet wash
       flashOrb.position.copy(impactPoint.clone().multiplyScalar(1.22));
       earthGroup.add(flashOrb);
-      const fillOrb = new THREE.PointLight(0xff8a32, 0, 6.8, 1.45);
+      const fillOrb = new THREE.PointLight(0xff8a32, 0, 4.2, 1.45);
       fillOrb.position.copy(impactPoint.clone().multiplyScalar(1.08));
       earthGroup.add(fillOrb);
       const craterLight = new THREE.PointLight(0xff7a28, 0, 1.3, 1.65); // reach hugs the smaller crater
@@ -2376,16 +2380,19 @@
         const look = camLockEl.checked ? hit.clone().multiplyScalar(0.84) : new THREE.Vector3();
         let pos;
         if (mode === 'close') {
-          pos = hit.clone().addScaledVector(n, 1.48).addScaledVector(tangent, 1.08).addScaledVector(bitan, 0.52);
+          // pulled in ~30% now that the crater is 4x smaller, so it still fills
+          // a solid part of the frame at this beat
+          pos = hit.clone().addScaledVector(n, 1.12).addScaledVector(tangent, 0.82).addScaledVector(bitan, 0.4);
           look.copy(hit).multiplyScalar(0.97);
         } else if (mode === 'wide') {
           pos = n.clone().multiplyScalar(9.4).addScaledVector(tangent, 2.5).addScaledVector(bitan, 1.5);
         } else if (mode === 'cinematic') {
           const u = clamp01(t / 12.4);
           const far = n.clone().multiplyScalar(10.8).addScaledVector(tangent, 3.6).add(new THREE.Vector3(0, 1.7, 0));
-          // hold a stable near rig through contact so Earth doesn't "jump away"
-          const near = hit.clone().addScaledVector(n, 1.95).addScaledVector(tangent, 1.48).addScaledVector(bitan, 0.55);
-          const contact = hit.clone().addScaledVector(n, 1.72).addScaledVector(tangent, 1.28).addScaledVector(bitan, 0.48);
+          // hold a stable near rig through contact so Earth doesn't "jump away";
+          // both near and contact tightened for the smaller crater
+          const near = hit.clone().addScaledVector(n, 1.42).addScaledVector(tangent, 1.08).addScaledVector(bitan, 0.42);
+          const contact = hit.clone().addScaledVector(n, 1.18).addScaledVector(tangent, 0.92).addScaledVector(bitan, 0.35);
           const pullback = n.clone().multiplyScalar(8.9).addScaledVector(tangent, 2.4).addScaledVector(bitan, 1.4);
           pos = far.clone().lerp(near, ease(Math.min(1, u * 1.05)));
           if (t >= 12.2) {
@@ -2396,7 +2403,7 @@
           if (t > 15.8) pos.lerp(pullback, ease(clamp01((t - 15.8) / 8)));
           if (t < 12.35) look.lerp(rock, 0.28 * (1 - clamp01((t - 11.0) / 1.35)));
         } else {
-          pos = hit.clone().addScaledVector(n, 2.32).addScaledVector(tangent, 2.08).addScaledVector(bitan, 0.82);
+          pos = hit.clone().addScaledVector(n, 1.68).addScaledVector(tangent, 1.5).addScaledVector(bitan, 0.6);
           look.copy(hit).multiplyScalar(0.9);
         }
         return { pos, look };
@@ -2405,11 +2412,15 @@
       function applyCamera(mode, t, hit, rock, snap) {
         if (mode === 'free') {
           controls.autoRotate = true;
+          controls.minDistance = 3.4;   // keep manual orbit outside the globe
           if (!camLockEl.checked) controls.target.set(0, 0, 0);
           else if (snap) controls.target.copy(hit).multiplyScalar(0.2);
           return;
         }
         controls.autoRotate = false;
+        // the scripted rigs frame a now-small crater from close in; the default
+        // 3.4 floor was clamping every contact/close shot back out to orbit
+        controls.minDistance = 0.9;
         const rig = cameraRig(mode, t, hit, rock);
         if (snap) {
           camera.position.copy(rig.pos);
@@ -3098,27 +3109,29 @@
           hud.flash.style.opacity = String(Math.min(0.28, (ft < 0.2 ? ease(ft / 0.05) * (1 - ft / 0.26) : 0)));
           hud.heat.style.opacity = '0';
 
-          // local ember wash around the crater — not a white lid over the site
+          // local ember wash around the crater — not a white lid over the site.
+          // bloomR is an angular cap radius; the crater is ~0.057 rad, so this
+          // tops out at ~2.5x the crater — a fireball, not a hemisphere
           const melt = Math.exp(-ft * 0.18);
-          impactBloom.material.uniforms.bloomR.value = 0.04 + ease(clamp01(ft / 0.85)) * 0.16;
-          impactBloom.material.uniforms.bloomA.value = Math.min(0.4, pulse * 0.46 + melt * 0.14) * Math.exp(-ft * 0.32);
+          impactBloom.material.uniforms.bloomR.value = 0.035 + ease(clamp01(ft / 0.85)) * 0.11;
+          impactBloom.material.uniforms.bloomA.value = Math.min(0.3, pulse * 0.36 + melt * 0.1) * Math.exp(-ft * 0.34);
 
-          // dialled back ~35% from the old pulse*36 / *22 — the contact flash
-          // was blowing the whole frame to white; still a hard punch, no longer
-          // a whiteout
-          flashOrb.intensity = pulse * 23 + melt * 6;
-          fillOrb.intensity = pulse * 14 + melt * 4;
+          // a hard local flare at contact, not a sustained wash over the disc —
+          // the split-second white punch is carried by hud.flash instead
+          flashOrb.intensity = pulse * 17 + melt * 4;
+          fillOrb.intensity = pulse * 10 + melt * 3;
           // Keep a steady ember baseline like the import build — the crater
           // stays a warm-lit bowl instead of going pitch black once the sun
           // dims. (An earlier decay-to-zero here left the parked floor emissive
           // as the only lit thing at the site, which read as a pale film.)
           craterLight.intensity = 2.2 + pulse * 7.5 + melt * 3.2;
-          atmo.material.uniforms.impactGlow.value = pulse * 0.9 + melt * 0.28;
+          // keep the atmospheric flare tight to the impact meridian — a broad
+          // wash over half the lit disc read as an exposure blowout, not a flare
+          atmo.material.uniforms.impactGlow.value = pulse * 0.55 + melt * 0.14;
 
-          // exposure pop then settle — 1.72 pushed the whole scene ~65% over
-          // baseline at contact and clipped everything to white; a smaller pop
-          // reads as a bright flare without losing the frame
-          renderer.toneMappingExposure = THREE.MathUtils.lerp(1.05, 1.34, Math.min(1, pulse * 0.98)) * (0.9 + longGlow * 0.22);
+          // exposure pop then settle — kept small so the daylit disc doesn't
+          // clip to white on contact
+          renderer.toneMappingExposure = THREE.MathUtils.lerp(1.05, 1.14, Math.min(1, pulse * 0.98)) * (0.92 + longGlow * 0.18);
 
           // soft impact jolt — enough punch without shoving Earth out of frame
           const shakeAmt = reduceMotion ? 0 : (ft < 1.8 ? (1 - ft / 1.8) * 0.048 : (ft < 5 ? (1 - (ft - 1.8) / 3.2) * 0.014 : 0));
@@ -3222,9 +3235,12 @@
         mistFine.mat.uniforms.uOpacity.value = t > 12.4 ? THREE.MathUtils.lerp(0.68, 0.32, after) : 0;
 
         if (t >= 12.55) {
-          const gf = clamp01((t - 12.55) / 8);
-          groundFog.material.uniforms.fogR.value = 0.16 + ease(gf) * 1.05;
-          groundFog.material.uniforms.fogA.value = (0.32 + gf * 0.48) * (1 - clamp01((t - 24) / 12) * 0.4);
+          // vapour/steam blanket — starts tight on the crater at contact and
+          // spreads over the next ~11s, so the close-up beat isn't buried under
+          // a milky cap before the camera pulls back
+          const gf = clamp01((t - 12.55) / 11);
+          groundFog.material.uniforms.fogR.value = 0.1 + ease(gf) * 0.8;
+          groundFog.material.uniforms.fogA.value = (0.22 + gf * 0.34) * (1 - clamp01((t - 24) / 12) * 0.4);
           groundFog.material.uniforms.time.value = t;
         }
 
