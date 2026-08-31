@@ -2801,16 +2801,28 @@
         // (scrubbed by pe so it lands with the dark), then sink + fade out
         if (dinoMixer) {
           if (pe < 0.4) {
-            if (!dinoIdle.isRunning()) { dinoDeath.stop(); dinoIdle.reset().play(); }
+            if (dinoDeath.isRunning()) dinoDeath.stop();
+            if (!dinoIdle.isRunning()) dinoIdle.reset().play();
             dinoMixer.update(dt);
-            dino.position.y = 0;
+            // layer a slow weight-shift, breathing and look-around on top of the
+            // idle clip — like the old procedural dino — so it never reads as a
+            // frozen prop while it stands in the rain
+            const br = reduceMotion ? 0 : 1;
+            dino.position.y = br * Math.sin(t * 1.05) * 0.05;
+            dino.rotation.set(
+              br * Math.sin(t * 0.7 + 1) * 0.02,
+              br * Math.sin(t * 0.24) * 0.05,
+              br * Math.sin(t * 0.4) * 0.025
+            );
             dinoMat.opacity = 1;
           } else {
             const kd = clamp01((pe - 0.4) / 0.26);         // death plays out over pe 0.4-0.66
-            if (dinoIdle.isRunning()) { dinoIdle.stop(); dinoDeath.reset().play(); }
+            if (dinoIdle.isRunning()) dinoIdle.stop();
+            if (!dinoDeath.isRunning()) dinoDeath.reset().play();
             dinoDeath.paused = true;
             dinoDeath.time = kd * dinoDeathDur;
             dinoMixer.update(0);
+            dino.rotation.set(0, 0, 0);
             const sink = ease(clamp01((pe - 0.72) / 0.28));
             dino.position.y = -sink * 2.6;
             dinoMat.opacity = 1 - sink;
