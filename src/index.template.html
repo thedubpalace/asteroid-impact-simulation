@@ -1,0 +1,359 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>CHICXULUB — 66 Million Years Ago</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,500;0,600;1,500&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --ink: #07080c;
+      --paper: #e8e2d4;
+      --mute: #8a8476;
+      --ember: #ff6a2a;
+      --gold: #d4b483;
+      --line: rgba(232, 226, 212, 0.14);
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { width: 100%; height: 100%; overflow: hidden; background: var(--ink); color: var(--paper); }
+    canvas { display: block; }
+    #hud {
+      position: fixed; inset: 0; pointer-events: none; z-index: 10;
+      font-family: "IBM Plex Sans", system-ui, sans-serif;
+    }
+    .vignette {
+      position: absolute; inset: 0;
+      background: radial-gradient(ellipse at center, transparent 42%, rgba(0,0,0,0.55) 100%);
+      pointer-events: none;
+    }
+    .flash {
+      position: absolute; inset: 0;
+      background: rgba(255,236,210,0.55);
+      opacity: 0; mix-blend-mode: screen; pointer-events: none;
+    }
+    .heat {
+      position: absolute; inset: 0; opacity: 0; pointer-events: none;
+      background: transparent;
+    }
+    .veil {
+      position: absolute; inset: 0; opacity: 0; pointer-events: none;
+      background: #000; z-index: 25;
+    }
+    .letterbox {
+      position: absolute; left: 0; right: 0; height: 50vh; background: #000;
+      pointer-events: none; z-index: 20;
+      transition: height 1.65s cubic-bezier(0.76, 0.04, 0.18, 1);
+    }
+    .letterbox.top { top: 0; }
+    .letterbox.bot { bottom: 0; }
+    body.is-playing .letterbox { height: 6.5vh; }
+    body.is-open .letterbox { height: 0; transition-duration: 1.1s; }
+    .grain {
+      position: absolute; inset: 0; width: 100%; height: 100%;
+      pointer-events: none; opacity: 0.1;
+      mix-blend-mode: overlay; z-index: 11;
+      image-rendering: pixelated;
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .grain { opacity: 0.04; }
+      .letterbox { transition: none; }
+    }
+    header {
+      position: absolute; top: 32px; left: 32px; max-width: 420px;
+    }
+    .kicker {
+      font-family: "IBM Plex Mono", monospace; font-size: 10px; letter-spacing: 0.28em;
+      text-transform: uppercase; color: var(--gold); margin-bottom: 8px;
+    }
+    h1 {
+      font-family: "Cormorant Garamond", Georgia, serif; font-weight: 500;
+      font-size: clamp(36px, 4.4vw, 58px); line-height: 0.9; letter-spacing: -0.02em;
+    }
+    h1 em { font-style: italic; color: #c9c2b2; }
+    .lede { margin-top: 12px; color: var(--mute); font-size: 12.5px; max-width: 34ch; line-height: 1.5; }
+    .panel {
+      position: absolute; top: 32px; right: 32px; width: min(280px, calc(100vw - 48px));
+      /* sit above the title/lede and the grain overlay so the controls are
+         always legible and clickable, but stay under the letterbox (z 20) so
+         the cinematic bars still frame over it */
+      z-index: 15;
+      /* never tall enough to reach the footer / its Replay button: the body
+         scrolls internally instead of the panel growing down over the footer
+         or up behind the title (top 32 + ~100 reserved for the footer zone) */
+      max-height: calc(100vh - 32px - 100px);
+      display: flex; flex-direction: column;
+      border: 1px solid var(--line); background: rgba(7,8,12,0.46);
+      backdrop-filter: blur(14px); padding: 16px 18px 14px;
+      transition: width 0.28s ease, padding 0.28s ease, background 0.28s ease;
+    }
+    .panel-head {
+      display: flex; align-items: center; justify-content: space-between; gap: 12px;
+      margin: -4px 0 10px; flex: 0 0 auto;
+    }
+    .panel-head .label { margin: 0; }
+    .pane-toggle {
+      pointer-events: auto; flex: 0 0 auto; width: 28px; height: 28px; padding: 0;
+      letter-spacing: 0; font-size: 14px; line-height: 1;
+    }
+    .panel-body {
+      overflow-y: auto; overflow-x: hidden; min-height: 0;
+      scrollbar-width: thin; scrollbar-color: var(--line) transparent;
+    }
+    .panel-body::-webkit-scrollbar { width: 6px; }
+    .panel-body::-webkit-scrollbar-track { background: transparent; }
+    .panel-body::-webkit-scrollbar-thumb { background: var(--line); border-radius: 3px; }
+    .panel-body::-webkit-scrollbar-thumb:hover { background: var(--ember); }
+    body.pane-min .panel {
+      width: auto; padding: 6px;
+      background: rgba(7,8,12,0.28);
+    }
+    body.pane-min .panel-head { margin: 0; }
+    body.pane-min .panel-head .label,
+    body.pane-min .panel-body { display: none; }
+    body.pane-min .pane-toggle { width: 36px; height: 36px; }
+    .row { display: flex; justify-content: space-between; gap: 16px; padding: 7px 0; border-bottom: 1px solid var(--line); }
+    .row:last-child { border-bottom: 0; }
+    /* Phase leads the telemetry list (it's the same status echoed as the
+       footer's headline) — a touch more room and an ember-tinted rule mark
+       it as the header of the readout, not just another metric row */
+    .row:first-child { padding-bottom: 11px; border-bottom-color: rgba(255, 106, 42, 0.28); }
+    .label { font-family: "IBM Plex Mono", monospace; font-size: 10px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--mute); }
+    .value { font-family: "IBM Plex Mono", monospace; font-size: 12px; color: var(--paper); text-align: right; }
+    .value.hot { color: var(--ember); }
+    .settings {
+      margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--line);
+    }
+    .settings .label { margin-bottom: 8px; display: block; }
+    select, .check {
+      pointer-events: auto; width: 100%; appearance: none;
+      background: rgba(232,226,212,0.06); color: var(--paper);
+      border: 1px solid var(--line); font-family: "IBM Plex Mono", monospace;
+      font-size: 11px; letter-spacing: 0.04em; padding: 8px 10px;
+    }
+    select { cursor: pointer; margin-bottom: 8px; }
+    .check {
+      display: flex; align-items: center; gap: 8px; cursor: pointer; width: auto;
+    }
+    .check input { accent-color: var(--ember); width: 16px; height: 16px; flex-shrink: 0; }
+    .check.sub { margin-left: 16px; font-size: 10.5px; opacity: 0.82; }
+    .layers-details summary, .floor-sub-details summary {
+      cursor: pointer; list-style: none; user-select: none; pointer-events: auto;
+    }
+    .layers-details summary::-webkit-details-marker,
+    .floor-sub-details summary::-webkit-details-marker { display: none; }
+    .layers-details summary::before { content: '▸ '; color: var(--gold); }
+    .layers-details[open] summary::before { content: '▾ '; }
+    .layers-list { display: flex; flex-direction: column; gap: 7px; margin-top: 8px; }
+    .floor-sub-details {
+      margin: 2px 0 2px 4px; border-left: 1px solid var(--line); padding-left: 10px;
+    }
+    .floor-sub-details summary {
+      font-size: 10.5px; color: var(--mute); padding: 3px 0;
+    }
+    .floor-sub-details summary::before { content: '▸ '; }
+    .floor-sub-details[open] summary::before { content: '▾ '; }
+    .floor-sub-details .check.sub { margin-left: 0; margin-top: 5px; }
+    .cam-btns { display: flex; gap: 6px; margin-top: 8px; }
+    .cam-btns button {
+      flex: 1; padding: 8px 8px; font-size: 9px; letter-spacing: 0.12em;
+    }
+    footer {
+      position: absolute; left: 32px; right: 32px; bottom: 32px;
+      display: flex; align-items: flex-end; justify-content: space-between; gap: 20px;
+    }
+    .phase-block { max-width: 520px; }
+    .phase-name {
+      font-family: "Cormorant Garamond", Georgia, serif; font-size: 28px; font-weight: 500; line-height: 1;
+    }
+    .phase-copy { margin-top: 6px; color: var(--mute); font-size: 14px; line-height: 1.5; max-width: 52ch; }
+    .bar { margin-top: 14px; height: 2px; background: rgba(232,226,212,0.12); overflow: hidden; }
+    .bar > i { display: block; height: 100%; width: 0%; background: linear-gradient(90deg, #ff9a4a, #ff3b1f); }
+    button {
+      pointer-events: auto; cursor: pointer; border: 1px solid var(--gold);
+      background: transparent; color: var(--paper); font-family: "IBM Plex Mono", monospace;
+      font-size: 11px; letter-spacing: 0.2em; text-transform: uppercase; padding: 12px 18px;
+    }
+    button:hover { background: var(--paper); color: var(--ink); border-color: var(--paper); }
+    #hud header, #hud .panel, #hud footer {
+      opacity: 0; transform: translateY(10px);
+      transition: opacity 0.9s ease 0.55s, transform 0.9s ease 0.55s;
+    }
+    body.is-playing #hud header,
+    body.is-playing #hud .panel,
+    body.is-playing #hud footer {
+      opacity: 1; transform: none;
+    }
+    .gate {
+      position: absolute; inset: 0; z-index: 30;
+      display: flex; align-items: center; justify-content: center;
+      pointer-events: auto;
+      transition: opacity 0.7s ease 0.15s, visibility 0.7s ease 0.15s;
+    }
+    .gate-inner { text-align: center; max-width: 36rem; padding: 0 24px; }
+    .gate .kicker { margin-bottom: 14px; }
+    .gate h2 {
+      font-family: "Cormorant Garamond", Georgia, serif; font-weight: 500;
+      font-size: clamp(42px, 7vw, 86px); line-height: 0.88; letter-spacing: -0.03em;
+    }
+    .gate h2 em { font-style: italic; color: #c9c2b2; }
+    .gate p {
+      margin: 18px auto 28px; color: var(--mute); font-size: 14px;
+      line-height: 1.55; max-width: 38ch;
+    }
+    .gate button {
+      min-width: 220px; padding: 16px 28px; font-size: 12px; letter-spacing: 0.28em;
+      background: var(--paper); color: var(--ink); border-color: var(--paper);
+    }
+    .gate button:hover { background: transparent; color: var(--paper); border-color: var(--gold); }
+    .gate button:disabled {
+      opacity: 0.28; cursor: wait; pointer-events: none;
+    }
+    .gate-load {
+      width: min(280px, 72vw); margin: 0 auto 22px;
+    }
+    .gate-load .load-meta {
+      display: flex; justify-content: space-between; align-items: baseline; gap: 16px;
+      margin-bottom: 8px;
+    }
+    .gate-load .load-meta .label { color: var(--gold); }
+    .gate-load .load-meta .value { font-size: 11px; color: var(--paper); }
+    .load-bar {
+      height: 2px; background: rgba(232,226,212,0.12); overflow: hidden;
+    }
+    .load-bar > i {
+      display: block; height: 100%; width: 4%;
+      background: linear-gradient(90deg, #d4b483, #ff6a2a);
+      transform-origin: left center;
+    }
+    body:not(.is-loading) .gate-load { opacity: 0.55; }
+    @media (prefers-reduced-motion: no-preference) {
+      .load-bar > i { transition: width 0.28s ease; }
+      .gate-load { transition: opacity 0.4s ease; }
+    }
+    body.is-playing .gate {
+      opacity: 0; visibility: hidden; pointer-events: none;
+    }
+    /* 820, not 720: above this the top-right panel and the top-left title/lede
+       start overlapping horizontally (header maxes at 420px + 32 left, panel is
+       280px + 32 right). Drop the panel to the bottom before that can happen. */
+    @media (max-width: 820px) {
+      header { top: 16px; left: 16px; }
+      .panel {
+        /* anchor below the header and hold ~195px clear at the bottom for the
+           stacked footer (phase name + 2-line copy + bar + Replay button);
+           the body scrolls inside whatever height is left */
+        top: 128px; bottom: 195px; right: 16px; left: 16px; width: auto;
+        max-height: none; display: flex; flex-direction: column;
+      }
+      body.pane-min .panel { top: 128px; bottom: auto; left: auto; right: 16px; }
+      .panel-body { overflow-y: auto; -webkit-overflow-scrolling: touch; }
+      footer { left: 16px; right: 16px; bottom: 16px; flex-direction: column; align-items: stretch; }
+      h1 { font-size: 34px; }
+    }
+  </style>
+</head>
+<body class="is-loading">
+  <div id="hud">
+    <div class="vignette"></div>
+    <div class="flash" id="flash"></div>
+    <div class="heat" id="heat"></div>
+    <!-- opaque black wipe used to hide the cut from the orbital view to the
+         ground-level extinction scene (two separate Three scenes) -->
+    <div class="veil" id="veil"></div>
+    <div class="letterbox top"></div>
+    <div class="letterbox bot"></div>
+    <canvas class="grain" id="grain"></canvas>
+    <div class="gate" id="gate">
+      <div class="gate-inner">
+        <div class="kicker">Yucatán · 66.043 Ma</div>
+        <h2>Chicxulub <em>impact</em></h2>
+        <p>A cinematic reconstruction of the asteroid that ended the Mesozoic. Press start to open the frame.</p>
+        <div class="gate-load" id="gate-load" role="status" aria-live="polite" aria-busy="true">
+          <div class="load-meta">
+            <span class="label" id="load-label">Preparing world</span>
+            <span class="value" id="load-pct">0%</span>
+          </div>
+          <div class="load-bar" aria-hidden="true"><i id="load-bar"></i></div>
+        </div>
+        <button id="start" type="button" disabled>Preparing…</button>
+      </div>
+    </div>
+    <header>
+      <div class="kicker">Yucatán · 66.043 Ma</div>
+      <h1>Chicxulub <em>impact</em></h1>
+      <p class="lede">The ten-kilometre asteroid that ended the Mesozoic and wintered the world.</p>
+    </header>
+    <aside class="panel" id="detail-pane">
+      <div class="panel-head">
+        <span class="label">Telemetry</span>
+        <button id="pane-toggle" class="pane-toggle" type="button" aria-expanded="true" aria-controls="detail-pane-body" title="Minimize detail pane">–</button>
+      </div>
+      <div class="panel-body" id="detail-pane-body">
+        <div class="row"><span class="label">Phase</span><span class="value hot" id="m-phase">Approach</span></div>
+        <div class="row"><span class="label">Speed</span><span class="value" id="m-speed">20.0 km/s</span></div>
+        <div class="row"><span class="label">Diameter</span><span class="value" id="m-size">10 km</span></div>
+        <div class="row"><span class="label">Energy</span><span class="value" id="m-energy">1×10⁸ Mt</span></div>
+        <div class="row"><span class="label">Altitude</span><span class="value" id="m-alt">1.2×10⁶ km</span></div>
+        <div class="row"><span class="label">Dust cover</span><span class="value" id="m-dust">0%</span></div>
+        <div class="settings">
+          <span class="label">Impact camera</span>
+          <select id="cam-mode">
+            <option value="cinematic">Cinematic follow</option>
+            <option value="impact">Best impact angle</option>
+            <option value="close">Close Yucatán</option>
+            <option value="wide">Wide Earth</option>
+            <option value="free">Free orbit</option>
+          </select>
+          <label class="check"><input type="checkbox" id="cam-lock" checked /> Lock to impact site</label>
+          <div class="cam-btns">
+            <button id="cam-set" type="button">Set view</button>
+            <button id="cam-reset" type="button">Reset cam</button>
+          </div>
+        </div>
+        <details class="settings layers-details">
+          <summary class="label">Layers</summary>
+          <div class="layers-list">
+            <label class="check"><input type="checkbox" id="layer-floor" checked /> Crater floor</label>
+            <details class="floor-sub-details">
+              <summary>↳ sub-components</summary>
+              <label class="check sub"><input type="checkbox" id="layer-floor-albedo" checked /> Albedo (colour map)</label>
+              <label class="check sub"><input type="checkbox" id="layer-floor-emit" checked /> Emissive glow (craterEmit)</label>
+              <label class="check sub"><input type="checkbox" id="layer-floor-rough" /> Roughness map (glassy sheen)</label>
+              <label class="check sub"><input type="checkbox" id="layer-floor-vcolor" checked /> Vertex tint (melt/ash)</label>
+              <label class="check sub"><input type="checkbox" id="layer-floor-see" /> See-through (low opacity)</label>
+            </details>
+            <label class="check"><input type="checkbox" id="layer-boulders" checked /> Boulders</label>
+            <label class="check"><input type="checkbox" id="layer-melt" checked /> Melt glow</label>
+            <label class="check"><input type="checkbox" id="layer-ejecta" checked /> Ejecta blanket</label>
+            <label class="check"><input type="checkbox" id="layer-scorch" checked /> Scorch / fire</label>
+            <label class="check"><input type="checkbox" id="layer-fog" checked /> Ground fog</label>
+            <label class="check"><input type="checkbox" id="layer-particles" checked /> Debris particles</label>
+            <label class="check"><input type="checkbox" id="layer-clouds" /> Clouds</label>
+            <label class="check"><input type="checkbox" id="layer-shock" checked /> Shockwave ring</label>
+            <label class="check"><input type="checkbox" id="layer-bloom" checked /> Impact bloom</label>
+            <label class="check"><input type="checkbox" id="layer-tsunami" checked /> Tsunami ring</label>
+          </div>
+        </details>
+      </div>
+    </aside>
+    <footer>
+      <div class="phase-block">
+        <div class="phase-name" id="phase-name">Terminal approach</div>
+        <p class="phase-copy" id="phase-copy">A carbonaceous chondrite falls out of the late Cretaceous sky toward a shallow tropical sea.</p>
+        <div class="bar"><i id="progress"></i></div>
+      </div>
+      <button id="replay" type="button">Restart / Replay</button>
+    </footer>
+  </div>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+  <script>
+    (function () {
+// @@BUNDLE@@
+    })();
+  </script>
+</body>
+</html>
