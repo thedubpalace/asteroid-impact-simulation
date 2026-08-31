@@ -1800,14 +1800,14 @@
             '  blanket=pow(max(blanket,0.0), 1.85)*(0.28+n*0.42+n2*0.18);',
             '  float streaks=ray*smoothstep(scorchR*1.22, scorchR*0.1, ang);',
             '  float cover=max(blanket, streaks*0.72);',
-            '  float melt=pow(max(1.0-ang/(scorchR*0.42+0.001),0.0), 2.4);',
-            '  float glass=pow(max(1.0-ang/(scorchR*0.2+0.001),0.0), 3.4);',
-            '  vec3 ash=mix(vec3(0.16,0.11,0.07), vec3(0.28,0.14,0.06), cover);',
-            '  vec3 hot=mix(vec3(0.55,0.14,0.03), vec3(1.0,0.62,0.18), glass);',
+            '  float melt=pow(max(1.0-ang/(scorchR*0.26+0.001),0.0), 3.4);',
+            '  float glass=pow(max(1.0-ang/(scorchR*0.13+0.001),0.0), 4.2);',
+            '  vec3 ash=mix(vec3(0.14,0.10,0.06), vec3(0.24,0.12,0.05), cover);',
+            '  vec3 hot=mix(vec3(0.5,0.13,0.03), vec3(0.95,0.5,0.14), glass);',
             '  vec3 col=mix(ash, hot, melt);',
-            '  float a=cover*scorchA*(0.55+n*0.12);',
+            '  float a=cover*scorchA*(0.5+n*0.12);',
             '  if(a<0.018) discard;',
-            '  gl_FragColor=vec4(col, clamp(a,0.0,0.72));',
+            '  gl_FragColor=vec4(col, clamp(a,0.0,0.5));',
             '}'
           ].join('\n')
         })
@@ -3106,32 +3106,33 @@
           const pulse = rise * decay;
           const longGlow = Math.exp(-ft * 0.28);
 
-          hud.flash.style.opacity = String(Math.min(0.28, (ft < 0.2 ? ease(ft / 0.05) * (1 - ft / 0.26) : 0)));
+          // brief, dim full-frame punch — a blink, not a sustained white-out
+          hud.flash.style.opacity = String(Math.min(0.16, (ft < 0.16 ? ease(ft / 0.04) * (1 - ft / 0.22) : 0)));
           hud.heat.style.opacity = '0';
 
-          // local ember wash around the crater — not a white lid over the site.
-          // bloomR is an angular cap radius; the crater is ~0.057 rad, so this
-          // tops out at ~2.5x the crater — a fireball, not a hemisphere
+          // incandescent fireball cap over the crater. bloomR is an angular
+          // radius; the crater is ~0.057 rad, so this tops out at ~1.5x it —
+          // a fireball a little bigger than the hole, nothing wider
           const melt = Math.exp(-ft * 0.18);
-          impactBloom.material.uniforms.bloomR.value = 0.035 + ease(clamp01(ft / 0.85)) * 0.11;
-          impactBloom.material.uniforms.bloomA.value = Math.min(0.3, pulse * 0.36 + melt * 0.1) * Math.exp(-ft * 0.34);
+          impactBloom.material.uniforms.bloomR.value = 0.03 + ease(clamp01(ft / 0.85)) * 0.055;
+          impactBloom.material.uniforms.bloomA.value = Math.min(0.2, pulse * 0.26 + melt * 0.07) * Math.exp(-ft * 0.7);
 
-          // a hard local flare at contact, not a sustained wash over the disc —
-          // the split-second white punch is carried by hud.flash instead
-          flashOrb.intensity = pulse * 17 + melt * 4;
-          fillOrb.intensity = pulse * 10 + melt * 3;
+          // the flash orbs are a hard blink at contact and then gone within ~1s
+          // (flashDk), so they never sit on the terrain as a white wash — the
+          // lingering warmth is carried by craterLight and the melt pool alone
+          const flashDk = Math.exp(-ft * 1.7);
+          flashOrb.intensity = flashDk * 21 + melt * 2;
+          fillOrb.intensity = flashDk * 12 + melt * 1.5;
           // Keep a steady ember baseline like the import build — the crater
           // stays a warm-lit bowl instead of going pitch black once the sun
           // dims. (An earlier decay-to-zero here left the parked floor emissive
           // as the only lit thing at the site, which read as a pale film.)
-          craterLight.intensity = 2.2 + pulse * 7.5 + melt * 3.2;
-          // keep the atmospheric flare tight to the impact meridian — a broad
-          // wash over half the lit disc read as an exposure blowout, not a flare
-          atmo.material.uniforms.impactGlow.value = pulse * 0.55 + melt * 0.14;
+          craterLight.intensity = 2.2 + pulse * 6.0 + melt * 2.6;
+          // atmospheric flare hugs the impact meridian only
+          atmo.material.uniforms.impactGlow.value = pulse * 0.4 + melt * 0.1;
 
-          // exposure pop then settle — kept small so the daylit disc doesn't
-          // clip to white on contact
-          renderer.toneMappingExposure = THREE.MathUtils.lerp(1.05, 1.14, Math.min(1, pulse * 0.98)) * (0.92 + longGlow * 0.18);
+          // barely a pop — the daylit disc must not clip to white on contact
+          renderer.toneMappingExposure = THREE.MathUtils.lerp(1.05, 1.09, Math.min(1, pulse * 0.98)) * (0.94 + longGlow * 0.12);
 
           // soft impact jolt — enough punch without shoving Earth out of frame
           const shakeAmt = reduceMotion ? 0 : (ft < 1.8 ? (1 - ft / 1.8) * 0.048 : (ft < 5 ? (1 - (ft - 1.8) / 3.2) * 0.014 : 0));
@@ -3176,7 +3177,7 @@
             THREE.MathUtils.lerp(0.48, 0.12, cool),
             THREE.MathUtils.lerp(0.12, 0.03, cool)
           );
-          craterFloor.material.emissiveIntensity = 1.15 + pulse * 2.4 + melt * 1.5 - cool * 0.55;
+          craterFloor.material.emissiveIntensity = 0.8 + pulse * 1.4 + melt * 0.95 - cool * 0.4;
           // A light cool-down ash on the floor colour — the import build leaves
           // this at full white, but a slight knock-back keeps the interior from
           // reading as a bare un-ashed hole once the land around it scorches.
@@ -3185,9 +3186,9 @@
           // black. Keep it gentle.
           const ashTint = THREE.MathUtils.lerp(1.0, 0.72, cool);
           craterFloor.material.color.setRGB(ashTint, ashTint * 0.95, ashTint * 0.9);
-          meltPool.material.opacity = Math.min(0.82, 0.22 + pulse * 0.52 + melt * 0.28) * (1 - cool * 0.55);
-          meltHalo.material.opacity = Math.min(0.62, 0.14 + pulse * 0.38 + melt * 0.2) * (1 - cool * 0.48);
-          meltOuter.material.opacity = Math.min(0.4, 0.08 + pulse * 0.22 + melt * 0.14) * (1 - cool * 0.4);
+          meltPool.material.opacity = Math.min(0.58, 0.16 + pulse * 0.34 + melt * 0.2) * (1 - cool * 0.55);
+          meltHalo.material.opacity = Math.min(0.26, 0.07 + pulse * 0.17 + melt * 0.1) * (1 - cool * 0.48);
+          meltOuter.material.opacity = Math.min(0.14, 0.03 + pulse * 0.09 + melt * 0.06) * (1 - cool * 0.4);
           ejectaFan.material.opacity = Math.min(0.72, ease(clamp01(ft / 1.25)) * 0.66);
           boulders.forEach((b, i) => {
             b.material.opacity = grow;
@@ -3239,15 +3240,18 @@
           // spreads over the next ~11s, so the close-up beat isn't buried under
           // a milky cap before the camera pulls back
           const gf = clamp01((t - 12.55) / 11);
-          groundFog.material.uniforms.fogR.value = 0.1 + ease(gf) * 0.8;
-          groundFog.material.uniforms.fogA.value = (0.22 + gf * 0.34) * (1 - clamp01((t - 24) / 12) * 0.4);
+          groundFog.material.uniforms.fogR.value = 0.08 + ease(gf) * 0.6;
+          groundFog.material.uniforms.fogA.value = (0.13 + gf * 0.22) * (1 - clamp01((t - 24) / 12) * 0.4);
           groundFog.material.uniforms.time.value = t;
         }
 
         if (t >= 12.4) {
+          // scorched-earth / fire blanket. Was 0.08 + 0.72 rad — a near-
+          // hemispheric wash that read as the impact flash being far too wide.
+          // A ~0.45 rad cap is still a continental burn zone, not the planet.
           const burn = clamp01((t - 12.4) / 5.6);
-          scorch.material.uniforms.scorchR.value = 0.08 + ease(burn) * 0.72;
-          scorch.material.uniforms.scorchA.value = 0.62 + burn * 0.24;
+          scorch.material.uniforms.scorchR.value = 0.05 + ease(burn) * 0.4;
+          scorch.material.uniforms.scorchA.value = 0.4 + burn * 0.18;
         }
 
         if (t >= 13.6) {
