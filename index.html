@@ -2990,7 +2990,10 @@
         if (t >= 33.2 && t < 33.95) veilA = ease(clamp01((t - 33.2) / 0.75));
         else if (t >= 33.95 && t < 34.9) veilA = 1 - ease(clamp01((t - 33.95) / 0.95));
         hud.veil.style.opacity = veilA.toFixed(3);
-        const onGround = t >= 33.6;
+        // only hand the frame to the ground scene once the veil is fully black,
+        // otherwise the forest flashes through at ~50% during the wipe-in and
+        // reads as a light flicker before the real reveal
+        const onGround = t >= 33.95;
 
         // rotate Earth first, then derive a single shared impact site for camera/rock/fx
         earthGroup.rotation.y += 0.00055;
