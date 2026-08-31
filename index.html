@@ -2693,7 +2693,9 @@
       const rainGeo = new THREE.BufferGeometry();
       rainGeo.setAttribute('position', new THREE.BufferAttribute(rainPos, 3));
       const rain = new THREE.LineSegments(rainGeo,
-        new THREE.LineBasicMaterial({ color: 0x9db0c2, transparent: true, opacity: 0.34 }));
+        // fog off so the streaks stay legible right to the end, when the murk
+        // would otherwise swallow them — opacity is driven manually instead
+        new THREE.LineBasicMaterial({ color: 0xadbdcd, transparent: true, opacity: 0.34, fog: false }));
       groundScene.add(rain);
 
       const ASH = 900;
@@ -2836,21 +2838,22 @@
         const dt = 1 / 60;
 
         // starts lit (some daylight still forces through), then the smoke pall
-        // thickens continuously across the whole phase until it's near-black
-        const dk = ease(clamp01((pe - 0.2) / 0.72));
+        // thickens across the phase — but it never reaches full black: the shot
+        // ends on a dim, cold gloom with the rain still visibly falling
+        const dk = ease(clamp01((pe - 0.2) / 0.72)) * 0.84;
         groundKey.intensity = THREE.MathUtils.lerp(1.7, 0.06, dk);
         groundAmb.intensity = THREE.MathUtils.lerp(0.95, 0.09, dk);
         groundHemi.intensity = THREE.MathUtils.lerp(0.95, 0.09, dk);
-        // much denser than before, and it keeps building — visibility collapses
-        groundScene.fog.density = THREE.MathUtils.lerp(0.026, 0.092, ease(pe));
-        const murk = new THREE.Color(0x7a7062).lerp(new THREE.Color(0x040303), dk);
+        // keeps building, but caps short of a white-out so the streaks read
+        groundScene.fog.density = THREE.MathUtils.lerp(0.026, 0.07, ease(pe));
+        const murk = new THREE.Color(0x7a7062).lerp(new THREE.Color(0x0d0c0a), dk);
         groundScene.fog.color.copy(murk);
         groundScene.background.copy(murk);
-        const sd = 1 - dk * 0.94;
+        const sd = 1 - dk * 0.9;
         groundSky.material.color.setRGB(sd, sd, sd);
         emberBand.material.opacity = 0.3 * (1 - clamp01(pe / 0.72));
         mistGlow.material.opacity = 0.85 * (1 - clamp01(pe / 0.45)); // last light, snuffed by ~pe 0.45
-        renderer.toneMappingExposure = THREE.MathUtils.lerp(1.1, 0.42, dk);
+        renderer.toneMappingExposure = THREE.MathUtils.lerp(1.1, 0.46, dk);
 
         // smoke banks: several clumps drifting across, thickening from a thin
         // haze at the start to a heavy pall by mid-phase
@@ -2889,7 +2892,9 @@
           rainPos[i * 6 + 3] = s.x + 0.14; rainPos[i * 6 + 4] = s.y - s.len; rainPos[i * 6 + 5] = s.z;
         }
         rainGeo.attributes.position.needsUpdate = true;
-        rain.material.opacity = 0.34 * (0.72 + pe * 0.28);
+        // hold the rain up as the light dies so the shot ends on falling rain,
+        // not a black frame
+        rain.material.opacity = THREE.MathUtils.lerp(0.28, 0.42, ease(pe));
 
         for (let i = 0; i < ASH; i++) {
           const a = ashState[i];
