@@ -24,9 +24,8 @@ Viewed solo or in a small informal group, self-guided — no narrator or facilit
 
 ## Capabilities and Constraints
 
-- Ships as `index.html` plus one sidecar asset, `models/trex.glb` (Three.js via CDN, no build step, no backend). The "One file, one frame" principle still governs the chrome; the extinction-scene dinosaur is the single allowed binary dependency.
-- `models/trex.glb` is the Quaternius "Animated Dinosaur Bundle" T‑Rex, CC0 / public domain (via Poly Pizza). No attribution is legally required; keep the credit comment in the loader anyway.
-- No login, install, or network dependency beyond loading the page, its CDN scripts/fonts, and `models/trex.glb` from the same origin.
+- Ships as `index.html` plus two sidecar model files, `models/trex.glb` and `models/tree.glb` (Three.js via CDN, no build step, no backend). The "One file, one frame" principle still governs the chrome; the extinction-scene models are the only allowed binary dependencies. Both are Quaternius CC0 / public domain assets via Poly Pizza (T‑Rex from the Animated Dinosaur Bundle; a low-poly Pine Tree, instanced for the forest). No attribution is legally required; keep the credit comments in the loaders anyway.
+- No login, install, or network dependency beyond loading the page, its CDN scripts/fonts, and the `models/*.glb` files from the same origin.
 - Numeric figures (10 km diameter, 20 km/s, 66.043 Ma, Yucatán/Chicxulub site, ~10⁸ Mt energy) are approximate public-knowledge figures, not tied to a specific cited paper. Future work should not present them as precisely sourced or invent citations for them.
 
 ## Brand Personality
