@@ -353,9 +353,15 @@
   <script>
     (function () {
       const EARTH_R = 2.4;
-      // Readable from orbit, but small enough that the wound can swallow it.
-      const ASTEROID_R = 0.052;
-      const CRATER_R = 0.42;
+      // True scale is ~0.0008 of Earth's radius — a sub-pixel speck. Keep it
+      // readable as a fireball but well under the crater it digs.
+      const ASTEROID_R = 0.02;
+      // Chicxulub is ~180 km across: ~1.4% of Earth's diameter. This is a
+      // ~4x cinematic lift on that (still a small basin, not a hemisphere
+      // wound). CRATER_RELIEF keeps the depth-to-width profile fixed as the
+      // radius changes, so the tuned bowl/rim shape is preserved.
+      const CRATER_R = 0.10;
+      const CRATER_RELIEF = CRATER_R / 0.42;
       const IMPACT_LAT = 21.4 * Math.PI / 180;
       const IMPACT_LON = -89.5 * Math.PI / 180;
 
@@ -1150,6 +1156,7 @@
         } else {
           z = 0.004 * (1 - (rn - 0.8) / 0.2) * (0.55 + n * 0.5);
         }
+        z *= CRATER_RELIEF;   // hold depth:width fixed as CRATER_R shrinks
         const scallop = 1 + n * 0.06 * Math.min(1, rn * 1.2);
         // Same flat-tangent-plane problem sphereWrap already fixed for boulders:
         // this disc's local x/y is a flat plane at the impact point, and the
@@ -1760,7 +1767,7 @@
       const fillOrb = new THREE.PointLight(0xff8a32, 0, 6.8, 1.45);
       fillOrb.position.copy(impactPoint.clone().multiplyScalar(1.08));
       earthGroup.add(fillOrb);
-      const craterLight = new THREE.PointLight(0xff7a28, 0, 3.8, 1.65);
+      const craterLight = new THREE.PointLight(0xff7a28, 0, 1.3, 1.65); // reach hugs the smaller crater
       craterLight.position.copy(impactPoint.clone().multiplyScalar(1.055));
       earthGroup.add(craterLight);
 
@@ -2455,7 +2462,10 @@
         const n = site.clone().normalize();
         // contact is the rock's leading face, not its center buried in the crust
         const to = n.clone().multiplyScalar(EARTH_R + ASTEROID_R * 0.35);
-        const inbound = n.clone().multiplyScalar(0.72).add(new THREE.Vector3(0.52, 0.18, -0.28)).normalize();
+        // steeply oblique — ~53 deg from horizontal, in from the north-east,
+        // matching the trajectory reconstructions for the real impactor
+        // (was ~64 deg, closer to vertical than the estimates support)
+        const inbound = n.clone().multiplyScalar(0.36).add(new THREE.Vector3(0.52, 0.18, -0.28)).normalize();
         const from = to.clone().addScaledVector(inbound, 15.6);
         return from.lerp(to, u);
       }
@@ -3124,15 +3134,19 @@
           if (ft > 8.5) hud.flash.style.opacity = 0;
           if (debrisBurst === 0) {
             debrisBurst = 1;
-            spawnBurst(ejecta, impactPoint, impactNormal, 980, 3.6, 2.25, 6.4, rockPal, false);
-            spawnBurst(ejecta, impactPoint, impactNormal, 620, 4.8, 1.05, 4.6, rockPal, true);
-            spawnBurst(smoke, impactPoint, impactNormal, 1400, 1.15, 0.95, 22, smokePal, true);
-            spawnBurst(smoke, impactPoint, impactNormal, 1100, 0.62, 1.55, 26, smokePal, true);
-            spawnBurst(smoke, impactPoint, impactNormal, 760, 0.28, 2.15, 28, smokePal, false);
-            spawnBurst(soot, impactPoint, impactNormal, 1100, 0.78, 1.75, 24, sootPal, true);
-            spawnBurst(soot, impactPoint, impactNormal, 780, 0.36, 2.45, 28, sootPal, true);
-            spawnBurst(mistFine, impactPoint, impactNormal, 860, 0.52, 1.7, 20, mistPal, true);
-            spawnBurst(mistFine, impactPoint, impactNormal, 620, 0.24, 2.35, 24, mistPal, false);
+            // throw speeds pulled back to match the smaller crater — rock
+            // ejecta ~0.5x (the ballistic arc reads as crater-scaled), the
+            // smoke/soot/mist column ~0.7x so the plume base still fits the pit
+            // while the winter pall keeps building
+            spawnBurst(ejecta, impactPoint, impactNormal, 980, 1.9, 2.25, 6.4, rockPal, false);
+            spawnBurst(ejecta, impactPoint, impactNormal, 620, 2.5, 1.05, 4.6, rockPal, true);
+            spawnBurst(smoke, impactPoint, impactNormal, 1400, 0.82, 0.95, 22, smokePal, true);
+            spawnBurst(smoke, impactPoint, impactNormal, 1100, 0.45, 1.55, 26, smokePal, true);
+            spawnBurst(smoke, impactPoint, impactNormal, 760, 0.2, 2.15, 28, smokePal, false);
+            spawnBurst(soot, impactPoint, impactNormal, 1100, 0.56, 1.75, 24, sootPal, true);
+            spawnBurst(soot, impactPoint, impactNormal, 780, 0.26, 2.45, 28, sootPal, true);
+            spawnBurst(mistFine, impactPoint, impactNormal, 860, 0.38, 1.7, 20, mistPal, true);
+            spawnBurst(mistFine, impactPoint, impactNormal, 620, 0.17, 2.35, 24, mistPal, false);
           }
           craterGroup.visible = true;
           const grow = ease(clamp01(ft / 1.15));
