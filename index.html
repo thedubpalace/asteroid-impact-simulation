@@ -621,8 +621,11 @@
         return Math.pow(a * 0.62 + b * 0.38, 1.32);
       }
 
-      // Build elevation once at color resolution, sample for other maps — huge speedup
-      const MAP_W = 2560, MAP_H = 1280;
+      // Build elevation once, sample for other maps — huge speedup. Nudged up
+      // for sharper coastlines/ridges; the colour map is painted higher still
+      // (below) so surface grain resolves finer. Kept modest so the one-time
+      // bake/paint on load stays a couple of seconds, not tens.
+      const MAP_W = 2880, MAP_H = 1440;
       const elevField = new Float32Array(MAP_W * MAP_H);
       const mtnField = new Float32Array(MAP_W * MAP_H);
       async function bakeElevation() {
@@ -784,7 +787,7 @@
         draw(c.getContext('2d'), w, h);
         const t = new THREE.CanvasTexture(c);
         t.encoding = THREE.sRGBEncoding;
-        t.anisotropy = 4;
+        t.anisotropy = 8;
         t.generateMipmaps = true;
         return t;
       }
@@ -2300,18 +2303,18 @@
 
         setLoad(46, 'Painting continents');
         await yieldFrame();
-        earthMap = swapMap(earth, 'map', canvasTex(paintCretaceous, MAP_W, MAP_H));
+        earthMap = swapMap(earth, 'map', canvasTex(paintCretaceous, 3072, 1536));
 
         setLoad(56, 'Carving relief');
         await yieldFrame();
-        bumpMap = swapMap(earth, 'bumpMap', canvasTex(paintBump, 1920, 960));
+        bumpMap = swapMap(earth, 'bumpMap', canvasTex(paintBump, 2560, 1280));
 
         setLoad(64, 'Polishing seas');
         await yieldFrame();
-        specMap = swapMap(earth, 'roughnessMap', canvasTex(paintSpec, 1024, 512));
+        specMap = swapMap(earth, 'roughnessMap', canvasTex(paintSpec, 1536, 768));
         // oceanGlint is a ShaderMaterial now — feed the real water mask into its
         // uniform instead of an alphaMap slot.
-        const nextWater = canvasTex(paintWater, 1024, 512);
+        const nextWater = canvasTex(paintWater, 1536, 768);
         const prevWater = oceanGlint.material.uniforms.waterMap.value;
         oceanGlint.material.uniforms.waterMap.value = nextWater;
         if (prevWater && prevWater !== nextWater && prevWater.dispose) prevWater.dispose();
