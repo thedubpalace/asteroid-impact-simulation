@@ -2797,11 +2797,73 @@
       groundScene.add(dino);
       let dinoModel = null, dinoMixer = null, dinoIdle = null, dinoDeath = null;
       let dinoDeathDur = 1;
+
+      // Procedural reptile hide for the T-Rex — broad blotches, a darker
+      // dorsal band and fine pebbling. Values stay low so it still reads as a
+      // near-black silhouette in the fog, just with grain instead of a flat fill.
+      function paintDinoSkin(ctx, w, h) {
+        const img = ctx.createImageData(w, h);
+        const d = img.data;
+        for (let y = 0; y < h; y++) {
+          const ny = y / h;
+          for (let x = 0; x < w; x++) {
+            const nx = x / w;
+            const i = (y * w + x) * 4;
+            const big = fbm(nx * 5.5, ny * 5.5);
+            const mid = fbm(nx * 17 + 3.1, ny * 17 + 1.7);
+            const peb = noise2(nx * 190, ny * 190);
+            const peb2 = noise2(nx * 96 + 5.0, ny * 74 + 2.0);
+            let r = 28 + big * 15 + mid * 8;
+            let g = 29 + big * 16 + mid * 9;
+            let b = 33 + big * 12 + mid * 6;
+            // darker mottled patches on the flanks
+            const patch = fbm(nx * 9 + 7.4, ny * 11 + 4.2);
+            if (patch > 0.62) { const t = (patch - 0.62) / 0.38; r -= t * 12; g -= t * 12; b -= t * 9; }
+            // fine pebble speckle
+            const sp = peb > 0.7 ? (peb - 0.7) / 0.3 : 0;
+            const sd = peb2 < 0.26 ? (0.26 - peb2) / 0.26 : 0;
+            r += sp * 9 - sd * 7; g += sp * 10 - sd * 7; b += sp * 7 - sd * 5;
+            d[i] = r < 0 ? 0 : r > 255 ? 255 : r;
+            d[i + 1] = g < 0 ? 0 : g > 255 ? 255 : g;
+            d[i + 2] = b < 0 ? 0 : b > 255 ? 255 : b;
+            d[i + 3] = 255;
+          }
+        }
+        ctx.putImageData(img, 0, 0);
+      }
+      function paintDinoBump(ctx, w, h) {
+        const img = ctx.createImageData(w, h);
+        const d = img.data;
+        for (let y = 0; y < h; y++) {
+          const ny = y / h;
+          for (let x = 0; x < w; x++) {
+            const nx = x / w;
+            const i = (y * w + x) * 4;
+            const peb = noise2(nx * 200, ny * 200);
+            const peb2 = noise2(nx * 110 + 3.0, ny * 90 + 6.0);
+            const wrinkle = Math.abs(Math.sin((nx * 14 + fbm(nx * 6, ny * 6) * 4) * Math.PI));
+            let v = 128 + (peb - 0.5) * 90 + (peb2 - 0.5) * 46 - wrinkle * 26;
+            v = v < 0 ? 0 : v > 255 ? 255 : v;
+            d[i] = d[i + 1] = d[i + 2] = v;
+            d[i + 3] = 255;
+          }
+        }
+        ctx.putImageData(img, 0, 0);
+      }
+      const dinoSkinTex = canvasTex(paintDinoSkin, 512, 512);
+      dinoSkinTex.wrapS = dinoSkinTex.wrapT = THREE.RepeatWrapping;
+      dinoSkinTex.repeat.set(2.5, 2.5);
+      const dinoBumpTex = canvasTex(paintDinoBump, 512, 512);
+      dinoBumpTex.wrapS = dinoBumpTex.wrapT = THREE.RepeatWrapping;
+      dinoBumpTex.repeat.set(2.5, 2.5);
+      dinoBumpTex.encoding = THREE.LinearEncoding;
+
       // three r128 gates skinned deformation on material.skinning — a fresh
       // material without it renders the rig frozen in bind pose (the model
       // translates as one rigid block, no clip ever shows). Keep it true.
       const dinoMat = new THREE.MeshStandardMaterial({
-        color: 0x24232a, roughness: 1, metalness: 0, transparent: true, opacity: 1,
+        color: 0xc8c6cc, roughness: 1, metalness: 0, transparent: true, opacity: 1,
+        map: dinoSkinTex, bumpMap: dinoBumpTex, bumpScale: 0.012,
         skinning: true
       });
       new THREE.GLTFLoader().load('models/trex.glb', (gltf) => {
