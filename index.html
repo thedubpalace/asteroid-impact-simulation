@@ -2727,7 +2727,10 @@
         const bb2 = new THREE.Box3().setFromObject(dinoModel);
         dinoModel.position.x -= (bb2.min.x + bb2.max.x) / 2;
         dinoModel.position.z -= (bb2.min.z + bb2.max.z) / 2;
-        dinoModel.position.y -= bb2.min.y;
+        // Box3.setFromObject ignores skeletal deformation, so this plants the
+        // rest pose. The Idle clip lowers the hips a touch on playback — lift a
+        // small margin so the feet still sit on the ground, not through it.
+        dinoModel.position.y -= bb2.min.y - 0.12;
         dinoMixer = new THREE.AnimationMixer(dinoModel);
         // tolerate clip-name drift between bundle exports — match on substring
         const byName = (frag) => gltf.animations.find(a => a.name.toLowerCase().includes(frag))
@@ -2826,7 +2829,7 @@
             // one rigid block on top of it
             const br = reduceMotion ? 0 : 1;
             dino.position.x = 0.5 + br * Math.sin(t * 0.45) * 0.06;
-            dino.position.y = br * Math.sin(t * 1.5) * 0.04;
+            dino.position.y = br * (0.5 + 0.5 * Math.sin(t * 1.5)) * 0.05; // breathe up only, never dip below ground
             dino.rotation.set(
               br * Math.sin(t * 0.8) * 0.015,
               br * Math.sin(t * 0.3) * 0.05,
