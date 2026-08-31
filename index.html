@@ -2798,34 +2798,41 @@
       let dinoModel = null, dinoMixer = null, dinoIdle = null, dinoDeath = null;
       let dinoDeathDur = 1;
 
-      // Procedural reptile hide for the T-Rex — broad blotches, a darker
-      // dorsal band and fine pebbling. Values stay low so it still reads as a
-      // near-black silhouette in the fog, just with grain instead of a flat fill.
+      // Procedural reptile hide for the T-Rex — high-contrast so the pattern
+      // still reads on a dark animal in gloom: dark olive dorsal counter-shade,
+      // pale belly, broad irregular blotches, faint cross bars, pebble speckle.
       function paintDinoSkin(ctx, w, h) {
         const img = ctx.createImageData(w, h);
         const d = img.data;
         for (let y = 0; y < h; y++) {
           const ny = y / h;
+          // v roughly runs belly (0) -> back (1) once tiled over the body
+          const back = Math.abs(ny * 2 - 1);
           for (let x = 0; x < w; x++) {
             const nx = x / w;
             const i = (y * w + x) * 4;
-            const big = fbm(nx * 5.5, ny * 5.5);
-            const mid = fbm(nx * 17 + 3.1, ny * 17 + 1.7);
-            const peb = noise2(nx * 190, ny * 190);
-            const peb2 = noise2(nx * 96 + 5.0, ny * 74 + 2.0);
-            let r = 28 + big * 15 + mid * 8;
-            let g = 29 + big * 16 + mid * 9;
-            let b = 33 + big * 12 + mid * 6;
-            // darker mottled patches on the flanks
-            const patch = fbm(nx * 9 + 7.4, ny * 11 + 4.2);
-            if (patch > 0.62) { const t = (patch - 0.62) / 0.38; r -= t * 12; g -= t * 12; b -= t * 9; }
-            // fine pebble speckle
-            const sp = peb > 0.7 ? (peb - 0.7) / 0.3 : 0;
-            const sd = peb2 < 0.26 ? (0.26 - peb2) / 0.26 : 0;
-            r += sp * 9 - sd * 7; g += sp * 10 - sd * 7; b += sp * 7 - sd * 5;
-            d[i] = r < 0 ? 0 : r > 255 ? 255 : r;
-            d[i + 1] = g < 0 ? 0 : g > 255 ? 255 : g;
-            d[i + 2] = b < 0 ? 0 : b > 255 ? 255 : b;
+            const big = fbm(nx * 4.5 + 0.5, ny * 4.5 + 1.2);
+            const mid = fbm(nx * 13 + 3.1, ny * 13 + 1.7);
+            const peb = noise2(nx * 150, ny * 150);
+            const peb2 = noise2(nx * 84 + 5.0, ny * 66 + 2.0);
+            // counter-shading: dark along the spine, pale on the belly
+            let base = 42 + (1 - back) * 66 - back * 12;
+            // broad blotch field
+            const blotch = fbm(nx * 7 + 7.4, ny * 8 + 4.2);
+            if (blotch > 0.58) base -= (blotch - 0.58) / 0.42 * 52;
+            else if (blotch < 0.34) base += (0.34 - blotch) / 0.34 * 30;
+            // soft cross bars down the flank
+            const bar = Math.sin((nx * 9 + big * 3.4) * Math.PI);
+            base -= Math.max(0, bar) * (0.35 + big * 0.4) * 20 * (1 - back * 0.5);
+            // pebble speckle
+            base += (peb > 0.66 ? (peb - 0.66) / 0.34 : 0) * 22;
+            base -= (peb2 < 0.3 ? (0.3 - peb2) / 0.3 : 0) * 18;
+            base += (mid - 0.5) * 10;
+            const v = base < 4 ? 4 : base > 230 ? 230 : base;
+            // faint olive cast, a touch warmer on the lighter belly
+            d[i] = v * 0.98;
+            d[i + 1] = v * 1.0;
+            d[i + 2] = v * 0.86;
             d[i + 3] = 255;
           }
         }
@@ -2839,10 +2846,12 @@
           for (let x = 0; x < w; x++) {
             const nx = x / w;
             const i = (y * w + x) * 4;
-            const peb = noise2(nx * 200, ny * 200);
-            const peb2 = noise2(nx * 110 + 3.0, ny * 90 + 6.0);
-            const wrinkle = Math.abs(Math.sin((nx * 14 + fbm(nx * 6, ny * 6) * 4) * Math.PI));
-            let v = 128 + (peb - 0.5) * 90 + (peb2 - 0.5) * 46 - wrinkle * 26;
+            const peb = noise2(nx * 170, ny * 170);
+            const peb2 = noise2(nx * 96 + 3.0, ny * 78 + 6.0);
+            // rows of raised scutes running along the body
+            const scute = Math.abs(Math.sin((ny * 40 + fbm(nx * 5, ny * 5) * 5) * Math.PI));
+            const wrinkle = Math.abs(Math.sin((nx * 12 + fbm(nx * 6, ny * 6) * 4) * Math.PI));
+            let v = 128 + (peb - 0.5) * 120 + (peb2 - 0.5) * 60 + (1 - scute) * 34 - wrinkle * 30;
             v = v < 0 ? 0 : v > 255 ? 255 : v;
             d[i] = d[i + 1] = d[i + 2] = v;
             d[i + 3] = 255;
@@ -2852,18 +2861,18 @@
       }
       const dinoSkinTex = canvasTex(paintDinoSkin, 512, 512);
       dinoSkinTex.wrapS = dinoSkinTex.wrapT = THREE.RepeatWrapping;
-      dinoSkinTex.repeat.set(2.5, 2.5);
+      dinoSkinTex.repeat.set(1, 1.3);
       const dinoBumpTex = canvasTex(paintDinoBump, 512, 512);
       dinoBumpTex.wrapS = dinoBumpTex.wrapT = THREE.RepeatWrapping;
-      dinoBumpTex.repeat.set(2.5, 2.5);
+      dinoBumpTex.repeat.set(1, 1.3);
       dinoBumpTex.encoding = THREE.LinearEncoding;
 
       // three r128 gates skinned deformation on material.skinning — a fresh
       // material without it renders the rig frozen in bind pose (the model
       // translates as one rigid block, no clip ever shows). Keep it true.
       const dinoMat = new THREE.MeshStandardMaterial({
-        color: 0xc8c6cc, roughness: 1, metalness: 0, transparent: true, opacity: 1,
-        map: dinoSkinTex, bumpMap: dinoBumpTex, bumpScale: 0.012,
+        color: 0xbdbbc2, roughness: 0.92, metalness: 0, transparent: true, opacity: 1,
+        map: dinoSkinTex, bumpMap: dinoBumpTex, bumpScale: 0.04,
         skinning: true
       });
       new THREE.GLTFLoader().load('models/trex.glb', (gltf) => {
@@ -2871,6 +2880,28 @@
         dinoModel.traverse((o) => {
           if (o.isMesh) {
             if (o.morphTargetInfluences && o.morphTargetInfluences.length) dinoMat.morphTargets = true;
+            // the GLB packs every part into a tiny palette-atlas UV cluster, so
+            // a tiled map samples near-uniform — rebuild UVs as a box projection
+            // of the local position so the skin actually spreads over the body
+            const g = o.geometry;
+            if (g && g.attributes.position) {
+              g.computeBoundingBox();
+              const bbx = g.boundingBox, sz = new THREE.Vector3();
+              bbx.getSize(sz);
+              const pos = g.attributes.position, nrm = g.attributes.normal;
+              const uv = new Float32Array(pos.count * 2);
+              for (let k = 0; k < pos.count; k++) {
+                const px = (pos.getX(k) - bbx.min.x) / (sz.x || 1);
+                const py = (pos.getY(k) - bbx.min.y) / (sz.y || 1);
+                const pz = (pos.getZ(k) - bbx.min.z) / (sz.z || 1);
+                const ax = Math.abs(nrm ? nrm.getX(k) : 0);
+                const az = Math.abs(nrm ? nrm.getZ(k) : 1);
+                // side-facing tris use x-length along the body; front/back use z
+                if (az >= ax) { uv[k * 2] = px * (sz.x / (sz.y || 1)); uv[k * 2 + 1] = py; }
+                else { uv[k * 2] = pz * (sz.z / (sz.y || 1)); uv[k * 2 + 1] = py; }
+              }
+              g.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
+            }
             o.material = dinoMat; o.castShadow = false; o.frustumCulled = false;
           }
         });
