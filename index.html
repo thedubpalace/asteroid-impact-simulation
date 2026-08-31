@@ -2702,12 +2702,21 @@
       groundScene.add(dino);
       let dinoModel = null, dinoMixer = null, dinoIdle = null, dinoDeath = null;
       let dinoDeathDur = 1;
+      // three r128 gates skinned deformation on material.skinning — a fresh
+      // material without it renders the rig frozen in bind pose (the model
+      // translates as one rigid block, no clip ever shows). Keep it true.
       const dinoMat = new THREE.MeshStandardMaterial({
-        color: 0x0a0a0c, roughness: 1, metalness: 0, transparent: true, opacity: 1
+        color: 0x24232a, roughness: 1, metalness: 0, transparent: true, opacity: 1,
+        skinning: true
       });
       new THREE.GLTFLoader().load('models/trex.glb', (gltf) => {
         dinoModel = gltf.scene;
-        dinoModel.traverse((o) => { if (o.isMesh) { o.material = dinoMat; o.castShadow = false; o.frustumCulled = false; } });
+        dinoModel.traverse((o) => {
+          if (o.isMesh) {
+            if (o.morphTargetInfluences && o.morphTargetInfluences.length) dinoMat.morphTargets = true;
+            o.material = dinoMat; o.castShadow = false; o.frustumCulled = false;
+          }
+        });
         // FBX2glTF bakes an arbitrary unit scale into the rig — measure the
         // rest-pose bounds and normalise to a fixed on-screen height, feet on y=0
         dinoModel.rotation.y = -Math.PI / 2 - 0.2;    // side-on profile, facing screen-right
@@ -2720,12 +2729,16 @@
         dinoModel.position.z -= (bb2.min.z + bb2.max.z) / 2;
         dinoModel.position.y -= bb2.min.y;
         dinoMixer = new THREE.AnimationMixer(dinoModel);
-        const byName = (n) => THREE.AnimationClip.findByName(gltf.animations, n);
-        dinoIdle = dinoMixer.clipAction(byName('Armature|TRex_Idle'));
-        dinoDeath = dinoMixer.clipAction(byName('Armature|TRex_Death'));
+        // tolerate clip-name drift between bundle exports — match on substring
+        const byName = (frag) => gltf.animations.find(a => a.name.toLowerCase().includes(frag))
+          || THREE.AnimationClip.findByName(gltf.animations, frag);
+        const idleClip = byName('idle') || gltf.animations[0];
+        const deathClip = byName('death') || byName('die') || idleClip;
+        dinoIdle = dinoMixer.clipAction(idleClip);
+        dinoDeath = dinoMixer.clipAction(deathClip);
         dinoDeath.clampWhenFinished = true;
         dinoDeath.loop = THREE.LoopOnce;
-        dinoDeathDur = byName('Armature|TRex_Death').duration;
+        dinoDeathDur = deathClip.duration || 1;
         dinoIdle.play();
       });
 
@@ -2733,6 +2746,8 @@
         hud.veil.style.opacity = 0;
         dinoMat.opacity = 1;
         dino.position.set(0.5, 0, -12);
+        dino.rotation.set(0, 0, 0);
+        dino.scale.setScalar(1);
         if (dinoMixer) {
           dinoDeath.stop();
           dinoIdle.reset().play();
@@ -2797,32 +2812,38 @@
         }
         ashGeo.attributes.position.needsUpdate = true;
 
-        // the animal: idle in the rain up to pe 0.5, then the Death clip
-        // (scrubbed by pe so it lands with the dark), then sink + fade out
+        // the animal: idle in the rain, then it topples (Death clip scrubbed
+        // over pe 0.30-0.52 so the collapse plays while there's still light to
+        // read it), lies dead through the dark, then sinks and fades out
         if (dinoMixer) {
-          if (pe < 0.4) {
+          if (pe < 0.3) {
             if (dinoDeath.isRunning()) dinoDeath.stop();
             if (!dinoIdle.isRunning()) dinoIdle.reset().play();
+            dinoIdle.setEffectiveTimeScale(1.15);
             dinoMixer.update(dt);
-            // layer a slow weight-shift, breathing and look-around on top of the
-            // idle clip — like the old procedural dino — so it never reads as a
-            // frozen prop while it stands in the rain
+            // the idle clip carries the head/tail/leg motion now that skinning
+            // works; keep the group layer light so the body doesn't wobble as
+            // one rigid block on top of it
             const br = reduceMotion ? 0 : 1;
-            dino.position.y = br * Math.sin(t * 1.05) * 0.05;
+            dino.position.x = 0.5 + br * Math.sin(t * 0.45) * 0.06;
+            dino.position.y = br * Math.sin(t * 1.5) * 0.04;
             dino.rotation.set(
-              br * Math.sin(t * 0.7 + 1) * 0.02,
-              br * Math.sin(t * 0.24) * 0.05,
-              br * Math.sin(t * 0.4) * 0.025
+              br * Math.sin(t * 0.8) * 0.015,
+              br * Math.sin(t * 0.3) * 0.05,
+              br * Math.sin(t * 0.45) * 0.02
             );
+            dino.scale.setScalar(1);
             dinoMat.opacity = 1;
           } else {
-            const kd = clamp01((pe - 0.4) / 0.26);         // death plays out over pe 0.4-0.66
+            const kd = clamp01((pe - 0.3) / 0.22);         // death plays out over pe 0.30-0.52
             if (dinoIdle.isRunning()) dinoIdle.stop();
             if (!dinoDeath.isRunning()) dinoDeath.reset().play();
             dinoDeath.paused = true;
             dinoDeath.time = kd * dinoDeathDur;
             dinoMixer.update(0);
             dino.rotation.set(0, 0, 0);
+            dino.scale.setScalar(1);
+            dino.position.x = 0.5;
             const sink = ease(clamp01((pe - 0.72) / 0.28));
             dino.position.y = -sink * 2.6;
             dinoMat.opacity = 1 - sink;
