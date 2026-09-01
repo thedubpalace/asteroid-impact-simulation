@@ -126,15 +126,17 @@
       const treePlace = [];
       for (let i = 0; i < TREE_N; i++) {
         const ang = Math.random() * Math.PI * 2;
-        const rad = 15 + Math.pow(Math.random(), 0.6) * 246;
+        const rad = 22 + Math.pow(Math.random(), 0.6) * 240;
         let px = Math.cos(ang) * rad;
         let pz = -Math.abs(Math.sin(ang) * rad) - 8;
         if (pz > 12) pz -= 40;
         if (Math.abs(px - 3) < 8 && pz > -26) px += (px < 3 ? -13 : 13);
         const far = clamp01(rad / 262);
+        // near trees were landing tall AND close, filling the whole frame —
+        // push the min radius out and cap the scale spread so nothing looms
         treePlace.push({
           px, pz,
-          sc: (0.8 + Math.random() * 1.15) * (1 - far * 0.28),
+          sc: (0.75 + Math.random() * 0.75) * (1 - far * 0.28),
           ry: Math.random() * Math.PI * 2,
           lean: Math.random() < 0.22 ? (Math.random() - 0.5) * 0.26 : 0,
           tone: 0.5 + Math.random() * 0.6,
