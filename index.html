@@ -792,6 +792,27 @@
         return t;
       }
 
+      function loadImage(src) {
+        return new Promise((res, rej) => {
+          const im = new Image();
+          im.crossOrigin = 'anonymous';
+          im.onload = () => res(im);
+          im.onerror = () => rej(new Error('image load failed: ' + src));
+          im.src = src;
+        });
+      }
+      // wrap an already-decoded <img> as a globe texture: sRGB for colour maps,
+      // linear for data maps (bump / roughness / masks); repeat on S so the
+      // equirectangular seam is invisible, clamp on T for the poles
+      function imgTex(img, linear) {
+        const t = new THREE.Texture(img);
+        t.encoding = linear ? THREE.LinearEncoding : THREE.sRGBEncoding;
+        t.wrapS = THREE.RepeatWrapping;
+        t.anisotropy = 8;
+        t.needsUpdate = true;
+        return t;
+      }
+
       function paintBump(ctx, w, h) {
         const img = ctx.createImageData(w, h);
         const d = img.data;
@@ -2296,29 +2317,54 @@
         return next;
       }
 
+      function setWaterMask(tex) {
+        const prev = oceanGlint.material.uniforms.waterMap.value;
+        oceanGlint.material.uniforms.waterMap.value = tex;
+        if (prev && prev !== tex && prev.dispose) prev.dispose();
+        waterMap = tex;
+      }
+
       async function boot() {
         setLoad(5, 'Opening the frame');
         await yieldFrame();
-        await bakeElevation();
 
-        setLoad(46, 'Painting continents');
+        // Primary path: a real palaeo-map of the Late Cretaceous (~66 Ma) — a
+        // photographic colour map plus a grayscale relief map, both cropped of
+        // their pole bands. The relief image is a *hillshaded* render, not a
+        // height field, so it can't drive a bumpMap (that produces moire) — it
+        // is only used as the roughness map (bright land = rough, dark sea =
+        // smooth); the colour photo already carries its own relief shading.
+        // If any of the three image files fail to load, fall back to procedural.
+        setLoad(12, 'Loading the Cretaceous map');
         await yieldFrame();
-        earthMap = swapMap(earth, 'map', canvasTex(paintCretaceous, 3072, 1536));
-
-        setLoad(56, 'Carving relief');
-        await yieldFrame();
-        bumpMap = swapMap(earth, 'bumpMap', canvasTex(paintBump, 2560, 1280));
-
-        setLoad(64, 'Polishing seas');
-        await yieldFrame();
-        specMap = swapMap(earth, 'roughnessMap', canvasTex(paintSpec, 1536, 768));
-        // oceanGlint is a ShaderMaterial now — feed the real water mask into its
-        // uniform instead of an alphaMap slot.
-        const nextWater = canvasTex(paintWater, 1536, 768);
-        const prevWater = oceanGlint.material.uniforms.waterMap.value;
-        oceanGlint.material.uniforms.waterMap.value = nextWater;
-        if (prevWater && prevWater !== nextWater && prevWater.dispose) prevWater.dispose();
-        waterMap = nextWater;
+        try {
+          const [colorImg, reliefImg, waterImg] = await Promise.all([
+            loadImage('textures/earth_cretaceous_color.jpg'),
+            loadImage('textures/earth_cretaceous_bump.jpg'),
+            loadImage('textures/earth_cretaceous_water.png')
+          ]);
+          setLoad(48, 'Wrapping the globe');
+          await yieldFrame();
+          earthMap = swapMap(earth, 'map', imgTex(colorImg, false));
+          bumpMap = swapMap(earth, 'bumpMap', null);
+          specMap = swapMap(earth, 'roughnessMap', imgTex(reliefImg, true));
+          setLoad(66, 'Polishing seas');
+          await yieldFrame();
+          setWaterMask(imgTex(waterImg, true));
+        } catch (err) {
+          console.warn('Cretaceous map unavailable — using procedural terrain', err);
+          await bakeElevation();
+          setLoad(46, 'Painting continents');
+          await yieldFrame();
+          earthMap = swapMap(earth, 'map', canvasTex(paintCretaceous, 3072, 1536));
+          setLoad(56, 'Carving relief');
+          await yieldFrame();
+          bumpMap = swapMap(earth, 'bumpMap', canvasTex(paintBump, 2560, 1280));
+          setLoad(64, 'Polishing seas');
+          await yieldFrame();
+          specMap = swapMap(earth, 'roughnessMap', canvasTex(paintSpec, 1536, 768));
+          setWaterMask(canvasTex(paintWater, 1536, 768));
+        }
 
         setLoad(74, 'Lighting the night side');
         await yieldFrame();

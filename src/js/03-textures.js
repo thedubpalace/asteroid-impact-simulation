@@ -125,6 +125,27 @@
         return t;
       }
 
+      function loadImage(src) {
+        return new Promise((res, rej) => {
+          const im = new Image();
+          im.crossOrigin = 'anonymous';
+          im.onload = () => res(im);
+          im.onerror = () => rej(new Error('image load failed: ' + src));
+          im.src = src;
+        });
+      }
+      // wrap an already-decoded <img> as a globe texture: sRGB for colour maps,
+      // linear for data maps (bump / roughness / masks); repeat on S so the
+      // equirectangular seam is invisible, clamp on T for the poles
+      function imgTex(img, linear) {
+        const t = new THREE.Texture(img);
+        t.encoding = linear ? THREE.LinearEncoding : THREE.sRGBEncoding;
+        t.wrapS = THREE.RepeatWrapping;
+        t.anisotropy = 8;
+        t.needsUpdate = true;
+        return t;
+      }
+
       function paintBump(ctx, w, h) {
         const img = ctx.createImageData(w, h);
         const d = img.data;
