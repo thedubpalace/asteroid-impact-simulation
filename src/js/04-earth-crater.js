@@ -442,12 +442,18 @@
         const n = Math.sin(ang * 5.0 + 0.4) * 0.22 + Math.sin(ang * 11.0 + 1.7) * 0.12
           + Math.sin(x * 38 + y * 27) * 0.1 + Math.sin(x * 71 - y * 53) * 0.05;
         const rn = Math.min(r / CRATER_R, 1.15);
-        if (rn < 0.16) return -0.055 * (1 - rn / 0.16) * (1.08 + n * 0.12);
-        if (rn < 0.3) { const pk = (rn - 0.16) / 0.14; return -0.022 + 0.028 * Math.sin(pk * Math.PI) * (0.82 + n * 0.4); }
-        if (rn < 0.56) { const bowl = 1 - (rn - 0.3) / 0.26; return -0.038 * bowl * bowl * (1.05 + n * 0.2); }
-        if (rn < 0.8) { const rimT = (rn - 0.56) / 0.24; return 0.022 * Math.sin(rimT * Math.PI) * (0.72 + n * 0.4); }
-        if (rn < 1.0) return 0.004 * (1 - (rn - 0.8) / 0.2) * (0.55 + n * 0.5);
-        return 0.004 * (0.55 + n * 0.5) * (1 - (rn - 1.0) / 0.15);
+        // craterVertex scales its identical profile by CRATER_RELIEF before it
+        // ever reaches the mesh — missing that here made this return a height
+        // up to ~1/CRATER_RELIEF too large, so boulders sat far off the actual
+        // (relief-scaled) floor: floating on the rim bump, buried in the bowl.
+        let z;
+        if (rn < 0.16) z = -0.055 * (1 - rn / 0.16) * (1.08 + n * 0.12);
+        else if (rn < 0.3) { const pk = (rn - 0.16) / 0.14; z = -0.022 + 0.028 * Math.sin(pk * Math.PI) * (0.82 + n * 0.4); }
+        else if (rn < 0.56) { const bowl = 1 - (rn - 0.3) / 0.26; z = -0.038 * bowl * bowl * (1.05 + n * 0.2); }
+        else if (rn < 0.8) { const rimT = (rn - 0.56) / 0.24; z = 0.022 * Math.sin(rimT * Math.PI) * (0.72 + n * 0.4); }
+        else if (rn < 1.0) z = 0.004 * (1 - (rn - 0.8) / 0.2) * (0.55 + n * 0.5);
+        else z = 0.004 * (0.55 + n * 0.5) * (1 - (rn - 1.0) / 0.15);
+        return z * CRATER_RELIEF;
       }
       // each boulder gets its own irregular hull instead of a shared scaled icosahedron —
       // repeated identical rocks read as fake in close-up shots

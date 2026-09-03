@@ -140,7 +140,13 @@
           ry: Math.random() * Math.PI * 2,
           lean: Math.random() < 0.22 ? (Math.random() - 0.5) * 0.26 : 0,
           tone: 0.5 + Math.random() * 0.6,
-          dead: Math.random() < 0.14
+          dead: Math.random() < 0.14,
+          // Late-Cretaceous conifer stands weren't uniform narrow pine — a
+          // share read as broader, flatter Araucaria-type crowns. No second
+          // model to load, so fake the silhouette by squashing/widening the
+          // shared canopy mesh's own scale per-instance instead of scaling it
+          // evenly like the rest.
+          broad: Math.random() < 0.25
         });
       }
 
@@ -235,13 +241,18 @@
           mtx.compose(pv, q, sv);
           trunkIM.setMatrixAt(i, mtx);
           const cs = t.dead ? t.sc * 0.5 : t.sc;
-          sv.set(cs, cs, cs);
+          // broad ones: wider, flatter crown instead of the uniform pine scale
+          const csXZ = cs * (t.broad ? 1.55 : 1);
+          const csY = cs * (t.broad ? 0.62 : 1);
+          sv.set(csXZ, csY, csXZ);
           mtx.compose(pv, q, sv);
           canopyIM.setMatrixAt(i, mtx);
           trunkIM.setColorAt(i, c.setRGB(t.tone * 1.0, t.tone * 0.9, t.tone * 0.78));
           canopyIM.setColorAt(i, t.dead
             ? c.setRGB(t.tone * 1.1, t.tone * 0.8, t.tone * 0.45)
-            : c.setRGB(t.tone * 0.85, t.tone * 1.05, t.tone * 0.78));
+            : t.broad
+              ? c.setRGB(t.tone * 0.72, t.tone * 0.98, t.tone * 0.86)   // duller blue-green Araucaria cast
+              : c.setRGB(t.tone * 0.85, t.tone * 1.05, t.tone * 0.78));
         });
         trunkIM.instanceMatrix.needsUpdate = true;
         canopyIM.instanceMatrix.needsUpdate = true;
@@ -395,13 +406,45 @@
         new THREE.LineBasicMaterial({ color: 0xadbdcd, transparent: true, opacity: 0.34, fog: false }));
       groundScene.add(rain);
 
+      // ---- Fire rain: re-entering ejecta, not just cold rain -------------
+      // Chicxulub threw material clear out of the atmosphere; as it fell back
+      // it re-heated on re-entry and rained down worldwide as glowing embers,
+      // the "global broiler" that is thought to have ignited wildfires within
+      // minutes/hours — well before soot ever darkens the sky. Modelled as a
+      // second, additive streak-rain that burns hot right as the scene opens
+      // and burns itself out over the phase's first stretch, underneath (and
+      // fading beneath) the ordinary cold rain.
+      const FIRE_RAIN = 900, FIRE_RAIN_BOX = 74;
+      const fireRainPos = new Float32Array(FIRE_RAIN * 6);
+      const fireRainState = [];
+      for (let i = 0; i < FIRE_RAIN; i++) {
+        const s = {
+          x: (Math.random() - 0.5) * FIRE_RAIN_BOX * 2, y: Math.random() * 50,
+          z: -Math.random() * 110 - 2, len: 0.5 + Math.random() * 1.3, v: 28 + Math.random() * 30
+        };
+        fireRainState.push(s);
+        fireRainPos[i * 6] = s.x; fireRainPos[i * 6 + 1] = s.y; fireRainPos[i * 6 + 2] = s.z;
+        fireRainPos[i * 6 + 3] = s.x + 0.1; fireRainPos[i * 6 + 4] = s.y - s.len; fireRainPos[i * 6 + 5] = s.z;
+      }
+      const fireRainGeo = new THREE.BufferGeometry();
+      fireRainGeo.setAttribute('position', new THREE.BufferAttribute(fireRainPos, 3));
+      const fireRain = new THREE.LineSegments(fireRainGeo,
+        new THREE.LineBasicMaterial({
+          color: 0xff6a20, transparent: true, opacity: 0, fog: false,
+          blending: THREE.AdditiveBlending, depthWrite: false
+        }));
+      groundScene.add(fireRain);
+
       const ASH = 900;
       const ashPos = new Float32Array(ASH * 3);
       const ashState = [];
       for (let i = 0; i < ASH; i++) {
         const a = {
           x: (Math.random() - 0.5) * 130, y: Math.random() * 46,
-          z: -Math.random() * 105 - 2, v: 1.4 + Math.random() * 2.2, sw: Math.random() * 6.28
+          z: -Math.random() * 105 - 2, v: 0.9 + Math.random() * 1.8, sw: Math.random() * 6.28,
+          // fine ash rides the wind rather than all falling straight down —
+          // per-particle drift so the fall reads as turbulent, not uniform
+          drift: (Math.random() - 0.5) * 0.5 + 0.35
         };
         ashState.push(a);
         ashPos[i * 3] = a.x; ashPos[i * 3 + 1] = a.y; ashPos[i * 3 + 2] = a.z;
@@ -686,11 +729,30 @@
         // not a black frame
         rain.material.opacity = THREE.MathUtils.lerp(0.28, 0.42, ease(pe));
 
+        for (let i = 0; i < FIRE_RAIN; i++) {
+          const s = fireRainState[i];
+          s.y -= s.v * dt;
+          s.x += 1.6 * dt;
+          if (s.y < -1) { s.y = 40 + Math.random() * 10; s.x = (Math.random() - 0.5) * FIRE_RAIN_BOX * 2; }
+          if (s.x > FIRE_RAIN_BOX) s.x -= FIRE_RAIN_BOX * 2;
+          fireRainPos[i * 6] = s.x; fireRainPos[i * 6 + 1] = s.y; fireRainPos[i * 6 + 2] = s.z;
+          fireRainPos[i * 6 + 3] = s.x + 0.1; fireRainPos[i * 6 + 4] = s.y - s.len; fireRainPos[i * 6 + 5] = s.z;
+        }
+        fireRainGeo.attributes.position.needsUpdate = true;
+        // burns hottest the instant the scene opens, then the re-entry pulse
+        // passes — from here on it's just cold rain and ash
+        fireRain.material.opacity = 0.5 * (1 - ease(clamp01(pe / 0.22)));
+
         for (let i = 0; i < ASH; i++) {
           const a = ashState[i];
           a.y -= a.v * dt; a.sw += dt;
-          a.x += Math.sin(a.sw) * 0.6 * dt + 0.4 * dt;
-          if (a.y < -1) { a.y = 44 + Math.random() * 6; a.x = (Math.random() - 0.5) * 130; }
+          // wider, uneven sway plus a faster jitter layer so fine ash eddies
+          // in turbulent air instead of falling in a near-straight line
+          a.x += (Math.sin(a.sw) * 1.4 + Math.sin(a.sw * 2.7 + i) * 0.5) * dt + a.drift * dt;
+          a.z += Math.cos(a.sw * 0.8 + i * 0.3) * 0.5 * dt;
+          if (a.y < -1) {
+            a.y = 44 + Math.random() * 6; a.x = (Math.random() - 0.5) * 130; a.z = -Math.random() * 105 - 2;
+          }
           ashPos[i * 3] = a.x; ashPos[i * 3 + 1] = a.y; ashPos[i * 3 + 2] = a.z;
         }
         ashGeo.attributes.position.needsUpdate = true;

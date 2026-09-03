@@ -1412,12 +1412,18 @@
         const n = Math.sin(ang * 5.0 + 0.4) * 0.22 + Math.sin(ang * 11.0 + 1.7) * 0.12
           + Math.sin(x * 38 + y * 27) * 0.1 + Math.sin(x * 71 - y * 53) * 0.05;
         const rn = Math.min(r / CRATER_R, 1.15);
-        if (rn < 0.16) return -0.055 * (1 - rn / 0.16) * (1.08 + n * 0.12);
-        if (rn < 0.3) { const pk = (rn - 0.16) / 0.14; return -0.022 + 0.028 * Math.sin(pk * Math.PI) * (0.82 + n * 0.4); }
-        if (rn < 0.56) { const bowl = 1 - (rn - 0.3) / 0.26; return -0.038 * bowl * bowl * (1.05 + n * 0.2); }
-        if (rn < 0.8) { const rimT = (rn - 0.56) / 0.24; return 0.022 * Math.sin(rimT * Math.PI) * (0.72 + n * 0.4); }
-        if (rn < 1.0) return 0.004 * (1 - (rn - 0.8) / 0.2) * (0.55 + n * 0.5);
-        return 0.004 * (0.55 + n * 0.5) * (1 - (rn - 1.0) / 0.15);
+        // craterVertex scales its identical profile by CRATER_RELIEF before it
+        // ever reaches the mesh — missing that here made this return a height
+        // up to ~1/CRATER_RELIEF too large, so boulders sat far off the actual
+        // (relief-scaled) floor: floating on the rim bump, buried in the bowl.
+        let z;
+        if (rn < 0.16) z = -0.055 * (1 - rn / 0.16) * (1.08 + n * 0.12);
+        else if (rn < 0.3) { const pk = (rn - 0.16) / 0.14; z = -0.022 + 0.028 * Math.sin(pk * Math.PI) * (0.82 + n * 0.4); }
+        else if (rn < 0.56) { const bowl = 1 - (rn - 0.3) / 0.26; z = -0.038 * bowl * bowl * (1.05 + n * 0.2); }
+        else if (rn < 0.8) { const rimT = (rn - 0.56) / 0.24; z = 0.022 * Math.sin(rimT * Math.PI) * (0.72 + n * 0.4); }
+        else if (rn < 1.0) z = 0.004 * (1 - (rn - 0.8) / 0.2) * (0.55 + n * 0.5);
+        else z = 0.004 * (0.55 + n * 0.5) * (1 - (rn - 1.0) / 0.15);
+        return z * CRATER_RELIEF;
       }
       // each boulder gets its own irregular hull instead of a shared scaled icosahedron —
       // repeated identical rocks read as fake in close-up shots
@@ -2324,6 +2330,41 @@
         waterMap = tex;
       }
 
+      // A higher-resolution decal of the impact region blended onto the globe:
+      // the global map goes soft when the camera dives to the surface for the
+      // contact beat. This is a lat/lon-bounded sphere segment a hair above the
+      // surface, lit like the earth, with a soft radial alpha fade so the crop
+      // edges dissolve into the base map. Rides earthGroup, rotates with it.
+      function addImpactDetailPatch(img) {
+        const halfLon = THREE.MathUtils.degToRad(20);
+        const halfLat = THREE.MathUtils.degToRad(15);
+        // three SphereGeometry angles vs latLonToVec: theta = PI/2 - lat, phi = PI - lon
+        const thetaStart = Math.PI / 2 - (IMPACT_LAT + halfLat);
+        const phiStart = Math.PI - (IMPACT_LON + halfLon);
+        const geo = new THREE.SphereGeometry(
+          EARTH_R + 0.004, 72, 48, phiStart, 2 * halfLon, thetaStart, 2 * halfLat);
+
+        const detailTex = imgTex(img, false);
+        detailTex.wrapS = THREE.RepeatWrapping;
+        detailTex.repeat.x = -1;              // phi runs opposite to longitude
+        detailTex.offset.x = 1;
+
+        const fade = document.createElement('canvas');
+        fade.width = fade.height = 256;
+        const fx = fade.getContext('2d');
+        const grad = fx.createRadialGradient(128, 128, 36, 128, 128, 128);
+        grad.addColorStop(0, '#fff'); grad.addColorStop(0.52, '#fff'); grad.addColorStop(1, '#000');
+        fx.fillStyle = grad; fx.fillRect(0, 0, 256, 256);
+
+        const patch = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({
+          map: detailTex, alphaMap: new THREE.CanvasTexture(fade), transparent: true,
+          roughness: 0.92, metalness: 0, depthWrite: false,
+          polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2
+        }));
+        patch.renderOrder = 2;
+        earthGroup.add(patch);
+      }
+
       async function boot() {
         setLoad(5, 'Opening the frame');
         await yieldFrame();
@@ -2338,10 +2379,11 @@
         setLoad(12, 'Loading the Cretaceous map');
         await yieldFrame();
         try {
-          const [colorImg, reliefImg, waterImg] = await Promise.all([
+          const [colorImg, reliefImg, waterImg, detailImg] = await Promise.all([
             loadImage('textures/earth_cretaceous_color.jpg'),
             loadImage('textures/earth_cretaceous_bump.jpg'),
-            loadImage('textures/earth_cretaceous_water.png')
+            loadImage('textures/earth_cretaceous_water.png'),
+            loadImage('textures/earth_cretaceous_detail.jpg').catch(() => null)
           ]);
           setLoad(48, 'Wrapping the globe');
           await yieldFrame();
@@ -2351,6 +2393,7 @@
           setLoad(66, 'Polishing seas');
           await yieldFrame();
           setWaterMask(imgTex(waterImg, true));
+          if (detailImg) addImpactDetailPatch(detailImg);
         } catch (err) {
           console.warn('Cretaceous map unavailable — using procedural terrain', err);
           await bakeElevation();
@@ -2723,7 +2766,13 @@
           ry: Math.random() * Math.PI * 2,
           lean: Math.random() < 0.22 ? (Math.random() - 0.5) * 0.26 : 0,
           tone: 0.5 + Math.random() * 0.6,
-          dead: Math.random() < 0.14
+          dead: Math.random() < 0.14,
+          // Late-Cretaceous conifer stands weren't uniform narrow pine — a
+          // share read as broader, flatter Araucaria-type crowns. No second
+          // model to load, so fake the silhouette by squashing/widening the
+          // shared canopy mesh's own scale per-instance instead of scaling it
+          // evenly like the rest.
+          broad: Math.random() < 0.25
         });
       }
 
@@ -2818,13 +2867,18 @@
           mtx.compose(pv, q, sv);
           trunkIM.setMatrixAt(i, mtx);
           const cs = t.dead ? t.sc * 0.5 : t.sc;
-          sv.set(cs, cs, cs);
+          // broad ones: wider, flatter crown instead of the uniform pine scale
+          const csXZ = cs * (t.broad ? 1.55 : 1);
+          const csY = cs * (t.broad ? 0.62 : 1);
+          sv.set(csXZ, csY, csXZ);
           mtx.compose(pv, q, sv);
           canopyIM.setMatrixAt(i, mtx);
           trunkIM.setColorAt(i, c.setRGB(t.tone * 1.0, t.tone * 0.9, t.tone * 0.78));
           canopyIM.setColorAt(i, t.dead
             ? c.setRGB(t.tone * 1.1, t.tone * 0.8, t.tone * 0.45)
-            : c.setRGB(t.tone * 0.85, t.tone * 1.05, t.tone * 0.78));
+            : t.broad
+              ? c.setRGB(t.tone * 0.72, t.tone * 0.98, t.tone * 0.86)   // duller blue-green Araucaria cast
+              : c.setRGB(t.tone * 0.85, t.tone * 1.05, t.tone * 0.78));
         });
         trunkIM.instanceMatrix.needsUpdate = true;
         canopyIM.instanceMatrix.needsUpdate = true;
@@ -2978,13 +3032,45 @@
         new THREE.LineBasicMaterial({ color: 0xadbdcd, transparent: true, opacity: 0.34, fog: false }));
       groundScene.add(rain);
 
+      // ---- Fire rain: re-entering ejecta, not just cold rain -------------
+      // Chicxulub threw material clear out of the atmosphere; as it fell back
+      // it re-heated on re-entry and rained down worldwide as glowing embers,
+      // the "global broiler" that is thought to have ignited wildfires within
+      // minutes/hours — well before soot ever darkens the sky. Modelled as a
+      // second, additive streak-rain that burns hot right as the scene opens
+      // and burns itself out over the phase's first stretch, underneath (and
+      // fading beneath) the ordinary cold rain.
+      const FIRE_RAIN = 900, FIRE_RAIN_BOX = 74;
+      const fireRainPos = new Float32Array(FIRE_RAIN * 6);
+      const fireRainState = [];
+      for (let i = 0; i < FIRE_RAIN; i++) {
+        const s = {
+          x: (Math.random() - 0.5) * FIRE_RAIN_BOX * 2, y: Math.random() * 50,
+          z: -Math.random() * 110 - 2, len: 0.5 + Math.random() * 1.3, v: 28 + Math.random() * 30
+        };
+        fireRainState.push(s);
+        fireRainPos[i * 6] = s.x; fireRainPos[i * 6 + 1] = s.y; fireRainPos[i * 6 + 2] = s.z;
+        fireRainPos[i * 6 + 3] = s.x + 0.1; fireRainPos[i * 6 + 4] = s.y - s.len; fireRainPos[i * 6 + 5] = s.z;
+      }
+      const fireRainGeo = new THREE.BufferGeometry();
+      fireRainGeo.setAttribute('position', new THREE.BufferAttribute(fireRainPos, 3));
+      const fireRain = new THREE.LineSegments(fireRainGeo,
+        new THREE.LineBasicMaterial({
+          color: 0xff6a20, transparent: true, opacity: 0, fog: false,
+          blending: THREE.AdditiveBlending, depthWrite: false
+        }));
+      groundScene.add(fireRain);
+
       const ASH = 900;
       const ashPos = new Float32Array(ASH * 3);
       const ashState = [];
       for (let i = 0; i < ASH; i++) {
         const a = {
           x: (Math.random() - 0.5) * 130, y: Math.random() * 46,
-          z: -Math.random() * 105 - 2, v: 1.4 + Math.random() * 2.2, sw: Math.random() * 6.28
+          z: -Math.random() * 105 - 2, v: 0.9 + Math.random() * 1.8, sw: Math.random() * 6.28,
+          // fine ash rides the wind rather than all falling straight down —
+          // per-particle drift so the fall reads as turbulent, not uniform
+          drift: (Math.random() - 0.5) * 0.5 + 0.35
         };
         ashState.push(a);
         ashPos[i * 3] = a.x; ashPos[i * 3 + 1] = a.y; ashPos[i * 3 + 2] = a.z;
@@ -3269,11 +3355,30 @@
         // not a black frame
         rain.material.opacity = THREE.MathUtils.lerp(0.28, 0.42, ease(pe));
 
+        for (let i = 0; i < FIRE_RAIN; i++) {
+          const s = fireRainState[i];
+          s.y -= s.v * dt;
+          s.x += 1.6 * dt;
+          if (s.y < -1) { s.y = 40 + Math.random() * 10; s.x = (Math.random() - 0.5) * FIRE_RAIN_BOX * 2; }
+          if (s.x > FIRE_RAIN_BOX) s.x -= FIRE_RAIN_BOX * 2;
+          fireRainPos[i * 6] = s.x; fireRainPos[i * 6 + 1] = s.y; fireRainPos[i * 6 + 2] = s.z;
+          fireRainPos[i * 6 + 3] = s.x + 0.1; fireRainPos[i * 6 + 4] = s.y - s.len; fireRainPos[i * 6 + 5] = s.z;
+        }
+        fireRainGeo.attributes.position.needsUpdate = true;
+        // burns hottest the instant the scene opens, then the re-entry pulse
+        // passes — from here on it's just cold rain and ash
+        fireRain.material.opacity = 0.5 * (1 - ease(clamp01(pe / 0.22)));
+
         for (let i = 0; i < ASH; i++) {
           const a = ashState[i];
           a.y -= a.v * dt; a.sw += dt;
-          a.x += Math.sin(a.sw) * 0.6 * dt + 0.4 * dt;
-          if (a.y < -1) { a.y = 44 + Math.random() * 6; a.x = (Math.random() - 0.5) * 130; }
+          // wider, uneven sway plus a faster jitter layer so fine ash eddies
+          // in turbulent air instead of falling in a near-straight line
+          a.x += (Math.sin(a.sw) * 1.4 + Math.sin(a.sw * 2.7 + i) * 0.5) * dt + a.drift * dt;
+          a.z += Math.cos(a.sw * 0.8 + i * 0.3) * 0.5 * dt;
+          if (a.y < -1) {
+            a.y = 44 + Math.random() * 6; a.x = (Math.random() - 0.5) * 130; a.z = -Math.random() * 105 - 2;
+          }
           ashPos[i * 3] = a.x; ashPos[i * 3 + 1] = a.y; ashPos[i * 3 + 2] = a.z;
         }
         ashGeo.attributes.position.needsUpdate = true;
@@ -3606,18 +3711,22 @@
           scorch.material.uniforms.scorchA.value = 0.4 + burn * 0.18;
         }
 
-        if (t >= 13.6) {
-          const tw = clamp01((t - 13.6) / 8.5);
-          tsunami.material.uniforms.waveR.value = tw * 2.7;
-          tsunami.material.uniforms.waveA.value = (1 - tw) * 0.42;
-        }
-
-        if (t >= 14.2) {
-          const sw = clamp01((t - 14.2) / 6.4);
+        // Air-blast shockwave is effectively supersonic and reaches any given
+        // distance far sooner than the tsunami — a gravity wave in water that,
+        // even in the open ocean, only manages ~700 km/h. It has to fire first
+        // and cross its full radius quickly, not trail behind the water wave.
+        if (t >= 12.6) {
+          const sw = clamp01((t - 12.6) / 3.6);
           shock.visible = shockLayerOn;
           shock.material.uniforms.waveR.value = sw * 3.15;
           shock.material.uniforms.waveW.value = 0.055 + sw * 0.07;
           shock.material.uniforms.waveA.value = (1 - sw) * 1.15;
+        }
+
+        if (t >= 13.4) {
+          const tw = clamp01((t - 13.4) / 10.5);
+          tsunami.material.uniforms.waveR.value = tw * 2.4;
+          tsunami.material.uniforms.waveA.value = (1 - tw) * 0.42;
         }
 
         if (t >= 16.8) {

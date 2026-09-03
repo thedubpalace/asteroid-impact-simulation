@@ -287,18 +287,22 @@
           scorch.material.uniforms.scorchA.value = 0.4 + burn * 0.18;
         }
 
-        if (t >= 13.6) {
-          const tw = clamp01((t - 13.6) / 8.5);
-          tsunami.material.uniforms.waveR.value = tw * 2.7;
-          tsunami.material.uniforms.waveA.value = (1 - tw) * 0.42;
-        }
-
-        if (t >= 14.2) {
-          const sw = clamp01((t - 14.2) / 6.4);
+        // Air-blast shockwave is effectively supersonic and reaches any given
+        // distance far sooner than the tsunami — a gravity wave in water that,
+        // even in the open ocean, only manages ~700 km/h. It has to fire first
+        // and cross its full radius quickly, not trail behind the water wave.
+        if (t >= 12.6) {
+          const sw = clamp01((t - 12.6) / 3.6);
           shock.visible = shockLayerOn;
           shock.material.uniforms.waveR.value = sw * 3.15;
           shock.material.uniforms.waveW.value = 0.055 + sw * 0.07;
           shock.material.uniforms.waveA.value = (1 - sw) * 1.15;
+        }
+
+        if (t >= 13.4) {
+          const tw = clamp01((t - 13.4) / 10.5);
+          tsunami.material.uniforms.waveR.value = tw * 2.4;
+          tsunami.material.uniforms.waveA.value = (1 - tw) * 0.42;
         }
 
         if (t >= 16.8) {
