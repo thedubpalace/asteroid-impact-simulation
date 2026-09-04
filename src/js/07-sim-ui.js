@@ -126,41 +126,6 @@
         waterMap = tex;
       }
 
-      // A higher-resolution decal of the impact region blended onto the globe:
-      // the global map goes soft when the camera dives to the surface for the
-      // contact beat. This is a lat/lon-bounded sphere segment a hair above the
-      // surface, lit like the earth, with a soft radial alpha fade so the crop
-      // edges dissolve into the base map. Rides earthGroup, rotates with it.
-      function addImpactDetailPatch(img) {
-        const halfLon = THREE.MathUtils.degToRad(20);
-        const halfLat = THREE.MathUtils.degToRad(15);
-        // three SphereGeometry angles vs latLonToVec: theta = PI/2 - lat, phi = PI - lon
-        const thetaStart = Math.PI / 2 - (IMPACT_LAT + halfLat);
-        const phiStart = Math.PI - (IMPACT_LON + halfLon);
-        const geo = new THREE.SphereGeometry(
-          EARTH_R + 0.004, 72, 48, phiStart, 2 * halfLon, thetaStart, 2 * halfLat);
-
-        const detailTex = imgTex(img, false);
-        detailTex.wrapS = THREE.RepeatWrapping;
-        detailTex.repeat.x = -1;              // phi runs opposite to longitude
-        detailTex.offset.x = 1;
-
-        const fade = document.createElement('canvas');
-        fade.width = fade.height = 256;
-        const fx = fade.getContext('2d');
-        const grad = fx.createRadialGradient(128, 128, 36, 128, 128, 128);
-        grad.addColorStop(0, '#fff'); grad.addColorStop(0.52, '#fff'); grad.addColorStop(1, '#000');
-        fx.fillStyle = grad; fx.fillRect(0, 0, 256, 256);
-
-        const patch = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({
-          map: detailTex, alphaMap: new THREE.CanvasTexture(fade), transparent: true,
-          roughness: 0.92, metalness: 0, depthWrite: false,
-          polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2
-        }));
-        patch.renderOrder = 2;
-        earthGroup.add(patch);
-      }
-
       async function boot() {
         setLoad(5, 'Opening the frame');
         await yieldFrame();
@@ -175,11 +140,10 @@
         setLoad(12, 'Loading the Cretaceous map');
         await yieldFrame();
         try {
-          const [colorImg, reliefImg, waterImg, detailImg] = await Promise.all([
+          const [colorImg, reliefImg, waterImg] = await Promise.all([
             loadImage('textures/earth_cretaceous_color.jpg'),
             loadImage('textures/earth_cretaceous_bump.jpg'),
-            loadImage('textures/earth_cretaceous_water.png'),
-            loadImage('textures/earth_cretaceous_detail.jpg').catch(() => null)
+            loadImage('textures/earth_cretaceous_water.png')
           ]);
           setLoad(48, 'Wrapping the globe');
           await yieldFrame();
@@ -189,7 +153,6 @@
           setLoad(66, 'Polishing seas');
           await yieldFrame();
           setWaterMask(imgTex(waterImg, true));
-          if (detailImg) addImpactDetailPatch(detailImg);
         } catch (err) {
           console.warn('Cretaceous map unavailable — using procedural terrain', err);
           await bakeElevation();
