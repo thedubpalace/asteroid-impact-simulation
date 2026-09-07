@@ -36,7 +36,10 @@
         dust.material.uniforms.dustR.value = 0;
         dust.material.uniforms.dustOpacity.value = 0;
         dust.material.uniforms.time.value = 0;
-        scorch.material.uniforms.scorchR.value = 0;
+        scorch.material.uniforms.blanketR.value = 0;
+        scorch.material.uniforms.rayF.value = 0;
+        scorch.material.uniforms.distF.value = 0;
+        scorch.material.uniforms.heat.value = 0;
         scorch.material.uniforms.scorchA.value = 0;
         shock.visible = false;
         shock.material.uniforms.waveR.value = 0;
@@ -124,6 +127,7 @@
       function setWaterMask(tex) {
         const prev = oceanGlint.material.uniforms.waterMap.value;
         oceanGlint.material.uniforms.waterMap.value = tex;
+        scorch.material.uniforms.waterMap.value = tex;
         if (prev && prev !== tex && prev.dispose) prev.dispose();
         waterMap = tex;
       }

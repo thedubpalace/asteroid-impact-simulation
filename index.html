@@ -1805,39 +1805,98 @@
       craterLight.position.copy(impactPoint.clone().multiplyScalar(1.055));
       earthGroup.add(craterLight);
 
+      // Ejecta deposit on the globe (the `scorch` layer). Three zones, all
+      // measured as angular distance from the impact (crater radius is
+      // CRATER_R/EARTH_R ~ 0.042 rad):
+      //  - continuous blanket: dark, hummocky, lobate edge, out to ~3 crater
+      //    radii (one crater diameter beyond the rim), thinning outward
+      //  - discontinuous rays: pale streaks of pulverised platform carbonate,
+      //    broken into dashes (secondary-crater chains), reaching several
+      //    times farther, longer downrange of the oblique approach
+      //  - distal spherule fall: a faint pale speckle that sweeps the whole
+      //    globe behind a ballistic front
+      // plus a low wide char beyond the blanket so the shock beat keeps its
+      // burnt continent until the thermal-pulse pass owns that.
       const scorch = new THREE.Mesh(
         new THREE.SphereGeometry(EARTH_R + 0.012, 80, 80),
         new THREE.ShaderMaterial({
           transparent: true, depthWrite: false, side: THREE.FrontSide,
           uniforms: {
             impactDir: { value: impactNormal.clone() },
-            scorchR: { value: 0 },
+            downDir: { value: new THREE.Vector3(1, 0, 0) },
+            waterMap: { value: waterMap },
+            blanketR: { value: 0 },
+            rayF: { value: 0 },
+            distF: { value: 0 },
+            heat: { value: 0 },
             scorchA: { value: 0 }
           },
-          vertexShader: 'varying vec3 vN; void main(){ vN=normalize(position); gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0); }',
+          vertexShader: 'varying vec3 vN; varying vec2 vUv; void main(){ vN=normalize(position); vUv=uv; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0); }',
           fragmentShader: [
-            'uniform vec3 impactDir; uniform float scorchR; uniform float scorchA; varying vec3 vN;',
+            'uniform sampler2D waterMap; varying vec2 vUv;',
+            'uniform vec3 impactDir; uniform vec3 downDir; uniform float blanketR; uniform float rayF; uniform float distF; uniform float heat; uniform float scorchA; varying vec3 vN;',
+            'float h21(vec2 p){ return fract(sin(dot(p, vec2(127.1,311.7)))*43758.5453); }',
+            'float h31(vec3 p){ return fract(sin(dot(p, vec3(127.1,311.7,74.7)))*43758.5453); }',
+            '// cell value-noise: sin-grid "noise" at this frequency aliases into a',
+            '// visible moire lattice across the whole globe',
+            'float vnoise(vec3 p){ vec3 i=floor(p); vec3 f=fract(p); f=f*f*(3.0-2.0*f);',
+            '  float a=h31(i), b=h31(i+vec3(1,0,0)), c=h31(i+vec3(0,1,0)), d=h31(i+vec3(1,1,0));',
+            '  float e=h31(i+vec3(0,0,1)), g=h31(i+vec3(1,0,1)), hh=h31(i+vec3(0,1,1)), k=h31(i+vec3(1,1,1));',
+            '  return mix(mix(mix(a,b,f.x),mix(c,d,f.x),f.y), mix(mix(e,g,f.x),mix(hh,k,f.x),f.y), f.z); }',
             'void main(){',
             '  vec3 nrm=normalize(vN);',
             '  vec3 dir=normalize(impactDir);',
             '  float ang=acos(clamp(dot(nrm,dir),-1.0,1.0));',
+            '  // azimuth around the site, measured from the downrange direction',
+            '  vec3 tanU=normalize(downDir-dir*dot(downDir,dir));',
+            '  vec3 bitU=cross(dir,tanU);',
+            '  vec3 fl3=nrm-dir*dot(nrm,dir);',
+            '  float fl=length(fl3);',
+            '  vec3 d=fl>1e-5?fl3/fl:tanU;',
+            '  float az=atan(dot(d,bitU),dot(d,tanU));',
+            '  float down=dot(d,tanU);',
             '  float n=sin(nrm.x*18.0+nrm.y*11.0)*0.42+sin(nrm.z*23.0+nrm.x*9.0)*0.32+sin(nrm.y*31.0-nrm.z*14.0)*0.18;',
             '  float n2=sin(nrm.x*41.0-nrm.z*27.0)*0.28+sin(nrm.y*53.0+nrm.x*19.0)*0.2;',
-            '  float az=atan(nrm.z,nrm.x);',
-            '  float ray=pow(max(0.0, cos(az*6.0+n*2.8)), 9.0)+pow(max(0.0, cos(az*11.0-n2*3.1)), 14.0)*0.55;',
-            '  float lobe=0.62+n*0.38+n2*0.22+sin(az*3.0+nrm.y*6.0)*0.16;',
-            '  float blanket=1.0-smoothstep(scorchR*0.04, scorchR*lobe, ang);',
-            '  blanket=pow(max(blanket,0.0), 1.85)*(0.28+n*0.42+n2*0.18);',
-            '  float streaks=ray*smoothstep(scorchR*1.22, scorchR*0.1, ang);',
-            '  float cover=max(blanket, streaks*0.72);',
-            '  float melt=pow(max(1.0-ang/(scorchR*0.26+0.001),0.0), 3.4);',
-            '  float glass=pow(max(1.0-ang/(scorchR*0.13+0.001),0.0), 4.2);',
-            '  vec3 ash=mix(vec3(0.14,0.10,0.06), vec3(0.24,0.12,0.05), cover);',
-            '  vec3 hot=mix(vec3(0.5,0.13,0.03), vec3(0.95,0.5,0.14), glass);',
-            '  vec3 col=mix(ash, hot, melt);',
-            '  float a=cover*scorchA*(0.5+n*0.12);',
-            '  if(a<0.018) discard;',
-            '  gl_FragColor=vec4(col, clamp(a,0.0,0.5));',
+            '  float n3=(0.6*vnoise(nrm*90.0)+0.4*vnoise(nrm*230.0))*2.0-1.0;',
+            '  // --- continuous blanket: lobate rim, slightly longer downrange',
+            '  float lobe=1.0+0.18*sin(az*7.0+n*2.0)+0.1*sin(az*13.0-n2*3.0)+0.12*down;',
+            '  float bEdge=blanketR*lobe;',
+            '  float blanket=1.0-smoothstep(bEdge*0.5, bEdge, ang);',
+            '  blanket*=0.7+0.3*(0.5+0.5*n3)*(0.6+0.4*n);',
+            '  // --- rays: narrow radial streaks, each its own length, dashed',
+            '  float rayA=pow(max(0.0, cos(az*9.0+n*1.6)), 14.0)+pow(max(0.0, cos(az*17.0-n2*2.2+1.3)), 22.0)*0.7+pow(max(0.0, cos(az*5.0+0.7)), 9.0)*0.5;',
+            '  float rid=floor((az+3.1416)/6.2832*17.0+0.5);',
+            '  float len=0.35+0.65*h21(vec2(rid,2.0));',
+            '  float reach=blanketR*(1.3+4.2*len*(0.72+0.38*down))*rayF;',
+            '  float ray=rayA*(1.0-smoothstep(reach*0.55, reach, ang))*smoothstep(bEdge*0.6, bEdge*1.05, ang);',
+            '  // irregular gaps (secondary-crater clusters), not a regular ladder',
+            '  float dash=0.4+0.6*smoothstep(0.32,0.68, vnoise(vec3(ang*150.0, az*7.0, 1.7)));',
+            '  ray*=dash*(0.7+0.3*n3);',
+            '  // --- distal spherule fall: faint pale speckle behind a global front',
+            '  float front=distF*3.3;',
+            '  // transient: brightest just behind the front, settled out once it has passed',
+            '  float dn=vnoise(nrm*28.0)*0.6+vnoise(nrm*70.0)*0.4;',
+            '  float distal=(1.0-smoothstep(front-0.7, front, ang))*distF*(1.0-distF)*3.2*smoothstep(0.3,0.8,dn)*0.11;',
+            '  // --- wide char beyond the blanket (interim, thermal pass to refine)',
+            '  float charR=blanketR*3.2;',
+            '  float chr=(1.0-smoothstep(charR*0.3, charR, ang))*(0.22+0.3*(0.5+0.5*n))*smoothstep(bEdge*0.7, bEdge*1.6, ang);',
+            '  // --- colours: dark hummocky blanket, pale carbonate rays, hot inner zone early',
+            '  vec3 blanketCol=mix(vec3(0.15,0.12,0.09), vec3(0.24,0.20,0.15), 0.5+0.5*n3);',
+            '  float melt=pow(max(1.0-ang/(blanketR*0.5+0.001),0.0), 2.6)*heat;',
+            '  blanketCol=mix(blanketCol, vec3(0.95,0.45,0.12), melt);',
+            '  vec3 rayCol=vec3(0.66,0.62,0.55);',
+            '  vec3 charCol=vec3(0.12,0.09,0.06);',
+            '  // rays and char only persist on land — over open water the fall-out',
+            '  // sinks and disperses (the blanket itself still buries the shelf)',
+            '  float land=1.0-0.85*texture2D(waterMap, vUv).r;',
+            '  float aB=blanket*scorchA;',
+            '  float aR=ray*scorchA*0.7*land;',
+            '  float aC=chr*scorchA*0.6*land;',
+            '  float aD=distal;',
+            '  float a=aB+aR*(1.0-aB)+aC*(1.0-aB-aR*(1.0-aB))+aD;',
+            '  if(a<0.015) discard;',
+            '  vec3 col=(blanketCol*aB+rayCol*aR*(1.0-aB)+charCol*aC*(1.0-aB-aR*(1.0-aB))+vec3(0.75,0.72,0.66)*aD)/max(a,1e-4);',
+            '  gl_FragColor=vec4(col, clamp(a,0.0,0.7));',
             '}'
           ].join('\n')
         })
@@ -2325,7 +2384,10 @@
         dust.material.uniforms.dustR.value = 0;
         dust.material.uniforms.dustOpacity.value = 0;
         dust.material.uniforms.time.value = 0;
-        scorch.material.uniforms.scorchR.value = 0;
+        scorch.material.uniforms.blanketR.value = 0;
+        scorch.material.uniforms.rayF.value = 0;
+        scorch.material.uniforms.distF.value = 0;
+        scorch.material.uniforms.heat.value = 0;
         scorch.material.uniforms.scorchA.value = 0;
         shock.visible = false;
         shock.material.uniforms.waveR.value = 0;
@@ -2413,6 +2475,7 @@
       function setWaterMask(tex) {
         const prev = oceanGlint.material.uniforms.waterMap.value;
         oceanGlint.material.uniforms.waterMap.value = tex;
+        scorch.material.uniforms.waterMap.value = tex;
         if (prev && prev !== tex && prev.dispose) prev.dispose();
         waterMap = tex;
       }
@@ -3674,6 +3737,13 @@
           const rimR = CRATER_R * craterScale;
           if (debrisBurst === 0) {
             debrisBurst = 1;
+            // downrange direction of the oblique approach, in earthGroup space,
+            // so the ejecta rays can run longer ahead of the impactor
+            const upWorld = asteroidPath(0).sub(asteroidPath(1)).normalize();
+            const inv = new THREE.Euler(-earthGroup.rotation.x, -earthGroup.rotation.y, -earthGroup.rotation.z, 'ZYX');
+            const downL = upWorld.negate().applyEuler(inv);
+            downL.addScaledVector(impactNormal, -downL.dot(impactNormal)).normalize();
+            scorch.material.uniforms.downDir.value.copy(downL);
             // Contact energy partition: the earliest ejecta is the fastest —
             // shocked fines jetted steeply off the contact point — while the
             // vapour fireball is born low over the pit and *rises* (velocity +
@@ -3787,12 +3857,17 @@
         }
 
         if (t >= 12.4) {
-          // scorched-earth / fire blanket. Was 0.08 + 0.72 rad — a near-
-          // hemispheric wash that read as the impact flash being far too wide.
-          // A ~0.45 rad cap is still a continental burn zone, not the planet.
-          const burn = clamp01((t - 12.4) / 5.6);
-          scorch.material.uniforms.scorchR.value = 0.05 + ease(burn) * 0.4;
-          scorch.material.uniforms.scorchA.value = 0.4 + burn * 0.18;
+          // Ejecta deposit. The continuous blanket follows the curtain down
+          // over the first ~2.5 s (to ~3 crater radii = one diameter past the
+          // rim); the rays keep extending as slower, farther ballistic material
+          // lands; the distal spherule front sweeps the globe over ~10 s.
+          const fa = t - 12.4;
+          const craterAng = CRATER_R / EARTH_R;
+          scorch.material.uniforms.blanketR.value = craterAng * (0.6 + ease(clamp01(fa / 2.5)) * 2.4);
+          scorch.material.uniforms.rayF.value = ease(clamp01((fa - 0.6) / 4.4));
+          scorch.material.uniforms.distF.value = ease(clamp01((fa - 2.5) / 9.5));
+          scorch.material.uniforms.heat.value = Math.exp(-fa * 0.25);
+          scorch.material.uniforms.scorchA.value = 0.5 + clamp01(fa / 5.6) * 0.2;
         }
 
         // Air-blast shockwave is effectively supersonic and reaches any given

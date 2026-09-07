@@ -196,6 +196,13 @@
           const rimR = CRATER_R * craterScale;
           if (debrisBurst === 0) {
             debrisBurst = 1;
+            // downrange direction of the oblique approach, in earthGroup space,
+            // so the ejecta rays can run longer ahead of the impactor
+            const upWorld = asteroidPath(0).sub(asteroidPath(1)).normalize();
+            const inv = new THREE.Euler(-earthGroup.rotation.x, -earthGroup.rotation.y, -earthGroup.rotation.z, 'ZYX');
+            const downL = upWorld.negate().applyEuler(inv);
+            downL.addScaledVector(impactNormal, -downL.dot(impactNormal)).normalize();
+            scorch.material.uniforms.downDir.value.copy(downL);
             // Contact energy partition: the earliest ejecta is the fastest —
             // shocked fines jetted steeply off the contact point — while the
             // vapour fireball is born low over the pit and *rises* (velocity +
@@ -309,12 +316,17 @@
         }
 
         if (t >= 12.4) {
-          // scorched-earth / fire blanket. Was 0.08 + 0.72 rad — a near-
-          // hemispheric wash that read as the impact flash being far too wide.
-          // A ~0.45 rad cap is still a continental burn zone, not the planet.
-          const burn = clamp01((t - 12.4) / 5.6);
-          scorch.material.uniforms.scorchR.value = 0.05 + ease(burn) * 0.4;
-          scorch.material.uniforms.scorchA.value = 0.4 + burn * 0.18;
+          // Ejecta deposit. The continuous blanket follows the curtain down
+          // over the first ~2.5 s (to ~3 crater radii = one diameter past the
+          // rim); the rays keep extending as slower, farther ballistic material
+          // lands; the distal spherule front sweeps the globe over ~10 s.
+          const fa = t - 12.4;
+          const craterAng = CRATER_R / EARTH_R;
+          scorch.material.uniforms.blanketR.value = craterAng * (0.6 + ease(clamp01(fa / 2.5)) * 2.4);
+          scorch.material.uniforms.rayF.value = ease(clamp01((fa - 0.6) / 4.4));
+          scorch.material.uniforms.distF.value = ease(clamp01((fa - 2.5) / 9.5));
+          scorch.material.uniforms.heat.value = Math.exp(-fa * 0.25);
+          scorch.material.uniforms.scorchA.value = 0.5 + clamp01(fa / 5.6) * 0.2;
         }
 
         // Air-blast shockwave is effectively supersonic and reaches any given
