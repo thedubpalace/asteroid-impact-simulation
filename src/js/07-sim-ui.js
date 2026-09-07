@@ -37,6 +37,8 @@
         dust.material.uniforms.dustOpacity.value = 0;
         dust.material.uniforms.time.value = 0;
         scorch.material.uniforms.blanketR.value = 0;
+        scorch.material.uniforms.burn.value = 0;
+        broil.material.uniforms.pulse.value = 0;
         scorch.material.uniforms.rayF.value = 0;
         scorch.material.uniforms.distF.value = 0;
         scorch.material.uniforms.heat.value = 0;

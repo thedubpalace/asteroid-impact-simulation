@@ -277,6 +277,7 @@
       wireLayerToggle('layer-particles', [ejecta.pts, smoke.pts, soot.pts, mistFine.pts, fireball.pts]);
       wireLayerToggle('layer-clouds', [clouds, highClouds]);
       wireLayerToggle('layer-bloom', [impactBloom]);
+      wireLayerToggle('layer-broil', [broil]);
       wireLayerToggle('layer-tsunami', [tsunami]);
       // shock.visible is also driven every frame by the animate loop once the
       // shockwave phase starts, so a plain .visible toggle here would just get

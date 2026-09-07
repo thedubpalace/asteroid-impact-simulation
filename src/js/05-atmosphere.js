@@ -85,6 +85,55 @@
       );
       earthGroup.add(haze);
 
+      // Re-entry glow of the thermal pulse: for a short window after the
+      // impact the upper atmosphere worldwide is streaked with incandescent
+      // returning ejecta. It is a global effect, but it only *reads* against
+      // the unlit hemisphere — on the day side the sunlit surface is far
+      // brighter than the glowing sky above it.
+      const broil = new THREE.Mesh(
+        new THREE.SphereGeometry(EARTH_R + 0.03, 80, 80),
+        new THREE.ShaderMaterial({
+          transparent: true, depthWrite: false, side: THREE.FrontSide,
+          blending: THREE.AdditiveBlending,
+          uniforms: {
+            sunDir: { value: sun.position.clone().normalize() },
+            pulse: { value: 0 }
+          },
+          vertexShader: [
+            'varying vec3 vN; varying vec3 vWPos;',
+            'void main(){',
+            '  vN=normalize(mat3(modelMatrix)*normal);',
+            '  vec4 wp=modelMatrix*vec4(position,1.0);',
+            '  vWPos=wp.xyz;',
+            '  gl_Position=projectionMatrix*viewMatrix*wp;',
+            '}'
+          ].join('\n'),
+          fragmentShader: [
+            'uniform vec3 sunDir; uniform float pulse;',
+            'varying vec3 vN; varying vec3 vWPos;',
+            'float h31(vec3 p){ return fract(sin(dot(p, vec3(127.1,311.7,74.7)))*43758.5453); }',
+            'float vnoise(vec3 p){ vec3 i=floor(p); vec3 f=fract(p); f=f*f*(3.0-2.0*f);',
+            '  float a=h31(i), b=h31(i+vec3(1,0,0)), c=h31(i+vec3(0,1,0)), d=h31(i+vec3(1,1,0));',
+            '  float e=h31(i+vec3(0,0,1)), g=h31(i+vec3(1,0,1)), hh=h31(i+vec3(0,1,1)), k=h31(i+vec3(1,1,1));',
+            '  return mix(mix(mix(a,b,f.x),mix(c,d,f.x),f.y), mix(mix(e,g,f.x),mix(hh,k,f.x),f.y), f.z); }',
+            'void main(){',
+            '  vec3 n=normalize(vN);',
+            '  vec3 v=normalize(cameraPosition-vWPos);',
+            '  float day=smoothstep(-0.28,0.4,dot(n,normalize(sunDir)));',
+            '  float side=mix(1.0,0.16,day);',
+            '  // the glowing shell of air is deepest looking edge-on at the limb',
+            '  float lim=pow(1.0-max(dot(n,v),0.0), 2.2);',
+            '  float m=0.45+0.55*(vnoise(n*11.0)*0.65+vnoise(n*27.0)*0.35);',
+            '  vec3 col=mix(vec3(0.5,0.09,0.02), vec3(1.0,0.46,0.13), pulse);',
+            '  float a=pulse*side*(0.22+lim*1.25)*m;',
+            '  if(a<0.004) discard;',
+            '  gl_FragColor=vec4(col, clamp(a,0.0,0.8));',
+            '}'
+          ].join('\n')
+        })
+      );
+      earthGroup.add(broil);
+
       const dust = new THREE.Mesh(
         new THREE.SphereGeometry(EARTH_R * 1.085, 80, 80),
         new THREE.ShaderMaterial({
@@ -300,6 +349,7 @@
             downDir: { value: new THREE.Vector3(1, 0, 0) },
             waterMap: { value: waterMap },
             blanketR: { value: 0 },
+            burn: { value: 0 },
             rayF: { value: 0 },
             distF: { value: 0 },
             heat: { value: 0 },
@@ -308,7 +358,7 @@
           vertexShader: 'varying vec3 vN; varying vec2 vUv; void main(){ vN=normalize(position); vUv=uv; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0); }',
           fragmentShader: [
             'uniform sampler2D waterMap; varying vec2 vUv;',
-            'uniform vec3 impactDir; uniform vec3 downDir; uniform float blanketR; uniform float rayF; uniform float distF; uniform float heat; uniform float scorchA; varying vec3 vN;',
+            'uniform vec3 impactDir; uniform vec3 downDir; uniform float blanketR; uniform float burn; uniform float rayF; uniform float distF; uniform float heat; uniform float scorchA; varying vec3 vN;',
             'float h21(vec2 p){ return fract(sin(dot(p, vec2(127.1,311.7)))*43758.5453); }',
             'float h31(vec3 p){ return fract(sin(dot(p, vec3(127.1,311.7,74.7)))*43758.5453); }',
             '// cell value-noise: sin-grid "noise" at this frequency aliases into a',
@@ -351,9 +401,13 @@
             '  // transient: brightest just behind the front, settled out once it has passed',
             '  float dn=vnoise(nrm*28.0)*0.6+vnoise(nrm*70.0)*0.4;',
             '  float distal=(1.0-smoothstep(front-0.7, front, ang))*distF*(1.0-distF)*3.2*smoothstep(0.3,0.8,dn)*0.11;',
-            '  // --- wide char beyond the blanket (interim, thermal pass to refine)',
-            '  float charR=blanketR*3.2;',
-            '  float chr=(1.0-smoothstep(charR*0.3, charR, ang))*(0.22+0.3*(0.5+0.5*n))*smoothstep(bEdge*0.7, bEdge*1.6, ang);',
+            '  // --- wildfire char. The thermal pulse ignites fires worldwide, so',
+            '  // this is a global patchy burn on land, not a ring around the',
+            '  // crater — a little denser near the impact where the re-entry flux',
+            '  // is heaviest. `burn` only ever grows: scars do not un-burn.',
+            '  float burnP=vnoise(nrm*7.0)*0.6+vnoise(nrm*19.0)*0.4;',
+            '  float near=0.78+0.3*(1.0-smoothstep(0.35,1.9,ang));',
+            '  float chr=burn*smoothstep(0.66-burn*0.52, 1.04-burn*0.44, burnP*near)*(0.55+0.45*burnP);',
             '  // --- colours: dark hummocky blanket, pale carbonate rays, hot inner zone early',
             '  vec3 blanketCol=mix(vec3(0.15,0.12,0.09), vec3(0.24,0.20,0.15), 0.5+0.5*n3);',
             '  float melt=pow(max(1.0-ang/(blanketR*0.5+0.001),0.0), 2.6)*heat;',

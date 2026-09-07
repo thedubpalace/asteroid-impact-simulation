@@ -333,6 +333,7 @@
             <label class="check"><input type="checkbox" id="layer-clouds" /> Clouds</label>
             <label class="check"><input type="checkbox" id="layer-shock" checked /> Shockwave ring</label>
             <label class="check"><input type="checkbox" id="layer-bloom" checked /> Impact bloom</label>
+            <label class="check"><input type="checkbox" id="layer-broil" checked /> Thermal pulse glow</label>
             <label class="check"><input type="checkbox" id="layer-tsunami" checked /> Tsunami ring</label>
           </div>
         </details>
@@ -1611,6 +1612,55 @@
       );
       earthGroup.add(haze);
 
+      // Re-entry glow of the thermal pulse: for a short window after the
+      // impact the upper atmosphere worldwide is streaked with incandescent
+      // returning ejecta. It is a global effect, but it only *reads* against
+      // the unlit hemisphere — on the day side the sunlit surface is far
+      // brighter than the glowing sky above it.
+      const broil = new THREE.Mesh(
+        new THREE.SphereGeometry(EARTH_R + 0.03, 80, 80),
+        new THREE.ShaderMaterial({
+          transparent: true, depthWrite: false, side: THREE.FrontSide,
+          blending: THREE.AdditiveBlending,
+          uniforms: {
+            sunDir: { value: sun.position.clone().normalize() },
+            pulse: { value: 0 }
+          },
+          vertexShader: [
+            'varying vec3 vN; varying vec3 vWPos;',
+            'void main(){',
+            '  vN=normalize(mat3(modelMatrix)*normal);',
+            '  vec4 wp=modelMatrix*vec4(position,1.0);',
+            '  vWPos=wp.xyz;',
+            '  gl_Position=projectionMatrix*viewMatrix*wp;',
+            '}'
+          ].join('\n'),
+          fragmentShader: [
+            'uniform vec3 sunDir; uniform float pulse;',
+            'varying vec3 vN; varying vec3 vWPos;',
+            'float h31(vec3 p){ return fract(sin(dot(p, vec3(127.1,311.7,74.7)))*43758.5453); }',
+            'float vnoise(vec3 p){ vec3 i=floor(p); vec3 f=fract(p); f=f*f*(3.0-2.0*f);',
+            '  float a=h31(i), b=h31(i+vec3(1,0,0)), c=h31(i+vec3(0,1,0)), d=h31(i+vec3(1,1,0));',
+            '  float e=h31(i+vec3(0,0,1)), g=h31(i+vec3(1,0,1)), hh=h31(i+vec3(0,1,1)), k=h31(i+vec3(1,1,1));',
+            '  return mix(mix(mix(a,b,f.x),mix(c,d,f.x),f.y), mix(mix(e,g,f.x),mix(hh,k,f.x),f.y), f.z); }',
+            'void main(){',
+            '  vec3 n=normalize(vN);',
+            '  vec3 v=normalize(cameraPosition-vWPos);',
+            '  float day=smoothstep(-0.28,0.4,dot(n,normalize(sunDir)));',
+            '  float side=mix(1.0,0.16,day);',
+            '  // the glowing shell of air is deepest looking edge-on at the limb',
+            '  float lim=pow(1.0-max(dot(n,v),0.0), 2.2);',
+            '  float m=0.45+0.55*(vnoise(n*11.0)*0.65+vnoise(n*27.0)*0.35);',
+            '  vec3 col=mix(vec3(0.5,0.09,0.02), vec3(1.0,0.46,0.13), pulse);',
+            '  float a=pulse*side*(0.22+lim*1.25)*m;',
+            '  if(a<0.004) discard;',
+            '  gl_FragColor=vec4(col, clamp(a,0.0,0.8));',
+            '}'
+          ].join('\n')
+        })
+      );
+      earthGroup.add(broil);
+
       const dust = new THREE.Mesh(
         new THREE.SphereGeometry(EARTH_R * 1.085, 80, 80),
         new THREE.ShaderMaterial({
@@ -1826,6 +1876,7 @@
             downDir: { value: new THREE.Vector3(1, 0, 0) },
             waterMap: { value: waterMap },
             blanketR: { value: 0 },
+            burn: { value: 0 },
             rayF: { value: 0 },
             distF: { value: 0 },
             heat: { value: 0 },
@@ -1834,7 +1885,7 @@
           vertexShader: 'varying vec3 vN; varying vec2 vUv; void main(){ vN=normalize(position); vUv=uv; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0); }',
           fragmentShader: [
             'uniform sampler2D waterMap; varying vec2 vUv;',
-            'uniform vec3 impactDir; uniform vec3 downDir; uniform float blanketR; uniform float rayF; uniform float distF; uniform float heat; uniform float scorchA; varying vec3 vN;',
+            'uniform vec3 impactDir; uniform vec3 downDir; uniform float blanketR; uniform float burn; uniform float rayF; uniform float distF; uniform float heat; uniform float scorchA; varying vec3 vN;',
             'float h21(vec2 p){ return fract(sin(dot(p, vec2(127.1,311.7)))*43758.5453); }',
             'float h31(vec3 p){ return fract(sin(dot(p, vec3(127.1,311.7,74.7)))*43758.5453); }',
             '// cell value-noise: sin-grid "noise" at this frequency aliases into a',
@@ -1877,9 +1928,13 @@
             '  // transient: brightest just behind the front, settled out once it has passed',
             '  float dn=vnoise(nrm*28.0)*0.6+vnoise(nrm*70.0)*0.4;',
             '  float distal=(1.0-smoothstep(front-0.7, front, ang))*distF*(1.0-distF)*3.2*smoothstep(0.3,0.8,dn)*0.11;',
-            '  // --- wide char beyond the blanket (interim, thermal pass to refine)',
-            '  float charR=blanketR*3.2;',
-            '  float chr=(1.0-smoothstep(charR*0.3, charR, ang))*(0.22+0.3*(0.5+0.5*n))*smoothstep(bEdge*0.7, bEdge*1.6, ang);',
+            '  // --- wildfire char. The thermal pulse ignites fires worldwide, so',
+            '  // this is a global patchy burn on land, not a ring around the',
+            '  // crater — a little denser near the impact where the re-entry flux',
+            '  // is heaviest. `burn` only ever grows: scars do not un-burn.',
+            '  float burnP=vnoise(nrm*7.0)*0.6+vnoise(nrm*19.0)*0.4;',
+            '  float near=0.78+0.3*(1.0-smoothstep(0.35,1.9,ang));',
+            '  float chr=burn*smoothstep(0.66-burn*0.52, 1.04-burn*0.44, burnP*near)*(0.55+0.45*burnP);',
             '  // --- colours: dark hummocky blanket, pale carbonate rays, hot inner zone early',
             '  vec3 blanketCol=mix(vec3(0.15,0.12,0.09), vec3(0.24,0.20,0.15), 0.5+0.5*n3);',
             '  float melt=pow(max(1.0-ang/(blanketR*0.5+0.001),0.0), 2.6)*heat;',
@@ -2182,6 +2237,7 @@
       wireLayerToggle('layer-particles', [ejecta.pts, smoke.pts, soot.pts, mistFine.pts, fireball.pts]);
       wireLayerToggle('layer-clouds', [clouds, highClouds]);
       wireLayerToggle('layer-bloom', [impactBloom]);
+      wireLayerToggle('layer-broil', [broil]);
       wireLayerToggle('layer-tsunami', [tsunami]);
       // shock.visible is also driven every frame by the animate loop once the
       // shockwave phase starts, so a plain .visible toggle here would just get
@@ -2385,6 +2441,8 @@
         dust.material.uniforms.dustOpacity.value = 0;
         dust.material.uniforms.time.value = 0;
         scorch.material.uniforms.blanketR.value = 0;
+        scorch.material.uniforms.burn.value = 0;
+        broil.material.uniforms.pulse.value = 0;
         scorch.material.uniforms.rayF.value = 0;
         scorch.material.uniforms.distF.value = 0;
         scorch.material.uniforms.heat.value = 0;
@@ -2569,6 +2627,19 @@
       function ease(t) { return t * t * (3 - 2 * t); }
       function clamp01(v) { return Math.max(0, Math.min(1, v)); }
 
+      // The thermal pulse — the "global broiler". Ballistic ejecta thrown clear
+      // of the atmosphere re-enters worldwide within tens of minutes of the
+      // impact, and the friction of that return turns the whole sky into an
+      // infrared grill: hot enough to ignite surface fires everywhere, hours
+      // before any soot darkens the sky. Shape: a fast rise as the first
+      // material arrives, then a long tail as the rest rains back. One curve
+      // drives both views of the same event — the glowing night side seen from
+      // orbit, and the fire rain that opens the ground scene.
+      function thermalPulse(u) {
+        if (u <= 0) return 0;
+        return ease(clamp01(u / 0.14)) * Math.exp(-Math.max(0, u - 0.14) * 3.6);
+      }
+
       const camModeEl = document.getElementById('cam-mode');
       const camLockEl = document.getElementById('cam-lock');
 
@@ -2748,6 +2819,9 @@
       // separate THREE.Scene with its own camera/fog/lights, rendered instead
       // of the globe once simTime passes EXT_T0.
       const EXT_T0 = 34, EXT_T1 = 50;
+      // colour of the sky while the re-entry pulse is overhead
+      const BROIL_LIGHT = new THREE.Color(0xff5a18);
+      const BROIL_SKY = new THREE.Color(0x4a1c0a);
       const groundScene = new THREE.Scene();
       // a pale ash-grey sky/haze is the whole point — the forest and the animal
       // read as dark silhouettes against it, then it drains to black
@@ -3412,22 +3486,32 @@
       function updateGround(t) {
         const pe = clamp01((t - EXT_T0) / (EXT_T1 - EXT_T0));
         const dt = 1 / 60;
+        // Ground-level view of the same thermal pulse the globe beat shows
+        // from orbit: the scene opens under a sky full of re-entering ejecta,
+        // which is what the fire rain *is*. It burns out over the first
+        // quarter of the phase and hands the frame to the cold rain and ash.
+        const broilG = thermalPulse(pe / 0.34);
 
         // starts lit (some daylight still forces through), then the smoke pall
         // thickens across the phase — but it never reaches full black: the shot
         // ends on a dim, cold gloom with the rain still visibly falling
         const dk = ease(clamp01((pe - 0.2) / 0.72)) * 0.84;
         groundKey.intensity = THREE.MathUtils.lerp(1.7, 0.06, dk);
-        groundAmb.intensity = THREE.MathUtils.lerp(0.95, 0.09, dk);
-        groundHemi.intensity = THREE.MathUtils.lerp(0.95, 0.09, dk);
+        groundAmb.intensity = THREE.MathUtils.lerp(0.95, 0.09, dk) + broilG * 0.5;
+        groundHemi.intensity = THREE.MathUtils.lerp(0.95, 0.09, dk) + broilG * 0.45;
         // keeps building, but caps short of a white-out so the streaks read
         groundScene.fog.density = THREE.MathUtils.lerp(0.026, 0.07, ease(pe));
         const murk = new THREE.Color(0x7a7062).lerp(new THREE.Color(0x0d0c0a), dk);
+        murk.lerp(BROIL_SKY, broilG * 0.8);
         groundScene.fog.color.copy(murk);
         groundScene.background.copy(murk);
         const sd = 1 - dk * 0.9;
-        groundSky.material.color.setRGB(sd, sd, sd);
-        emberBand.material.opacity = 0.3 * (1 - clamp01(pe / 0.72));
+        groundSky.material.color.setRGB(sd * (1 + broilG * 1.5), sd * (1 + broilG * 0.32), sd * (1 + broilG * 0.04));
+        // the light is coming from the whole sky, not the (long gone) sun, so
+        // the pulse lands on the ambient and hemisphere terms, not the key
+        groundAmb.color.setHex(0x3a342c).lerp(BROIL_LIGHT, broilG * 0.85);
+        groundHemi.color.setHex(0x5e5548).lerp(BROIL_LIGHT, broilG * 0.85);
+        emberBand.material.opacity = 0.3 * (1 - clamp01(pe / 0.72)) + broilG * 0.5;
         mistGlow.material.opacity = 0.85 * (1 - clamp01(pe / 0.45)); // last light, snuffed by ~pe 0.45
         renderer.toneMappingExposure = THREE.MathUtils.lerp(1.1, 0.46, dk);
 
@@ -3482,9 +3566,8 @@
           fireRainPos[i * 6 + 3] = s.x + 0.1; fireRainPos[i * 6 + 4] = s.y - s.len; fireRainPos[i * 6 + 5] = s.z;
         }
         fireRainGeo.attributes.position.needsUpdate = true;
-        // burns hottest the instant the scene opens, then the re-entry pulse
-        // passes — from here on it's just cold rain and ash
-        fireRain.material.opacity = 0.5 * (1 - ease(clamp01(pe / 0.22)));
+        // same curve as the glow overhead — this is the material making it
+        fireRain.material.opacity = 0.62 * broilG;
 
         for (let i = 0; i < ASH; i++) {
           const a = ashState[i];
@@ -3869,6 +3952,16 @@
           scorch.material.uniforms.heat.value = Math.exp(-fa * 0.25);
           scorch.material.uniforms.scorchA.value = 0.5 + clamp01(fa / 5.6) * 0.2;
         }
+
+        // Thermal pulse. Deliberately lands after the air blast has crossed
+        // and before the dust veil starts to bite at t=16.8: the sky broils
+        // first, and only then does the soot those fires raise put it out.
+        const broilNow = thermalPulse((t - 15.2) / 8.0);
+        broil.material.uniforms.pulse.value = broilNow;
+        broil.material.uniforms.sunDir.value.copy(sun.position).normalize();
+        // fires spread while the pulse is on the sky and then simply stay
+        // burnt — roughly the running integral of the pulse above
+        scorch.material.uniforms.burn.value = ease(clamp01((t - 15.6) / 6.5));
 
         // Air-blast shockwave is effectively supersonic and reaches any given
         // distance far sooner than the tsunami — a gravity wave in water that,

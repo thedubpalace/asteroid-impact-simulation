@@ -1,6 +1,19 @@
       function ease(t) { return t * t * (3 - 2 * t); }
       function clamp01(v) { return Math.max(0, Math.min(1, v)); }
 
+      // The thermal pulse — the "global broiler". Ballistic ejecta thrown clear
+      // of the atmosphere re-enters worldwide within tens of minutes of the
+      // impact, and the friction of that return turns the whole sky into an
+      // infrared grill: hot enough to ignite surface fires everywhere, hours
+      // before any soot darkens the sky. Shape: a fast rise as the first
+      // material arrives, then a long tail as the rest rains back. One curve
+      // drives both views of the same event — the glowing night side seen from
+      // orbit, and the fire rain that opens the ground scene.
+      function thermalPulse(u) {
+        if (u <= 0) return 0;
+        return ease(clamp01(u / 0.14)) * Math.exp(-Math.max(0, u - 0.14) * 3.6);
+      }
+
       const camModeEl = document.getElementById('cam-mode');
       const camLockEl = document.getElementById('cam-lock');
 

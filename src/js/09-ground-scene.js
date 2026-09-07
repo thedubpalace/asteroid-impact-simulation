@@ -5,6 +5,9 @@
       // separate THREE.Scene with its own camera/fog/lights, rendered instead
       // of the globe once simTime passes EXT_T0.
       const EXT_T0 = 34, EXT_T1 = 50;
+      // colour of the sky while the re-entry pulse is overhead
+      const BROIL_LIGHT = new THREE.Color(0xff5a18);
+      const BROIL_SKY = new THREE.Color(0x4a1c0a);
       const groundScene = new THREE.Scene();
       // a pale ash-grey sky/haze is the whole point — the forest and the animal
       // read as dark silhouettes against it, then it drains to black
@@ -669,22 +672,32 @@
       function updateGround(t) {
         const pe = clamp01((t - EXT_T0) / (EXT_T1 - EXT_T0));
         const dt = 1 / 60;
+        // Ground-level view of the same thermal pulse the globe beat shows
+        // from orbit: the scene opens under a sky full of re-entering ejecta,
+        // which is what the fire rain *is*. It burns out over the first
+        // quarter of the phase and hands the frame to the cold rain and ash.
+        const broilG = thermalPulse(pe / 0.34);
 
         // starts lit (some daylight still forces through), then the smoke pall
         // thickens across the phase — but it never reaches full black: the shot
         // ends on a dim, cold gloom with the rain still visibly falling
         const dk = ease(clamp01((pe - 0.2) / 0.72)) * 0.84;
         groundKey.intensity = THREE.MathUtils.lerp(1.7, 0.06, dk);
-        groundAmb.intensity = THREE.MathUtils.lerp(0.95, 0.09, dk);
-        groundHemi.intensity = THREE.MathUtils.lerp(0.95, 0.09, dk);
+        groundAmb.intensity = THREE.MathUtils.lerp(0.95, 0.09, dk) + broilG * 0.5;
+        groundHemi.intensity = THREE.MathUtils.lerp(0.95, 0.09, dk) + broilG * 0.45;
         // keeps building, but caps short of a white-out so the streaks read
         groundScene.fog.density = THREE.MathUtils.lerp(0.026, 0.07, ease(pe));
         const murk = new THREE.Color(0x7a7062).lerp(new THREE.Color(0x0d0c0a), dk);
+        murk.lerp(BROIL_SKY, broilG * 0.8);
         groundScene.fog.color.copy(murk);
         groundScene.background.copy(murk);
         const sd = 1 - dk * 0.9;
-        groundSky.material.color.setRGB(sd, sd, sd);
-        emberBand.material.opacity = 0.3 * (1 - clamp01(pe / 0.72));
+        groundSky.material.color.setRGB(sd * (1 + broilG * 1.5), sd * (1 + broilG * 0.32), sd * (1 + broilG * 0.04));
+        // the light is coming from the whole sky, not the (long gone) sun, so
+        // the pulse lands on the ambient and hemisphere terms, not the key
+        groundAmb.color.setHex(0x3a342c).lerp(BROIL_LIGHT, broilG * 0.85);
+        groundHemi.color.setHex(0x5e5548).lerp(BROIL_LIGHT, broilG * 0.85);
+        emberBand.material.opacity = 0.3 * (1 - clamp01(pe / 0.72)) + broilG * 0.5;
         mistGlow.material.opacity = 0.85 * (1 - clamp01(pe / 0.45)); // last light, snuffed by ~pe 0.45
         renderer.toneMappingExposure = THREE.MathUtils.lerp(1.1, 0.46, dk);
 
@@ -739,9 +752,8 @@
           fireRainPos[i * 6 + 3] = s.x + 0.1; fireRainPos[i * 6 + 4] = s.y - s.len; fireRainPos[i * 6 + 5] = s.z;
         }
         fireRainGeo.attributes.position.needsUpdate = true;
-        // burns hottest the instant the scene opens, then the re-entry pulse
-        // passes — from here on it's just cold rain and ash
-        fireRain.material.opacity = 0.5 * (1 - ease(clamp01(pe / 0.22)));
+        // same curve as the glow overhead — this is the material making it
+        fireRain.material.opacity = 0.62 * broilG;
 
         for (let i = 0; i < ASH; i++) {
           const a = ashState[i];

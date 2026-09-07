@@ -329,6 +329,16 @@
           scorch.material.uniforms.scorchA.value = 0.5 + clamp01(fa / 5.6) * 0.2;
         }
 
+        // Thermal pulse. Deliberately lands after the air blast has crossed
+        // and before the dust veil starts to bite at t=16.8: the sky broils
+        // first, and only then does the soot those fires raise put it out.
+        const broilNow = thermalPulse((t - 15.2) / 8.0);
+        broil.material.uniforms.pulse.value = broilNow;
+        broil.material.uniforms.sunDir.value.copy(sun.position).normalize();
+        // fires spread while the pulse is on the sky and then simply stay
+        // burnt — roughly the running integral of the pulse above
+        scorch.material.uniforms.burn.value = ease(clamp01((t - 15.6) / 6.5));
+
         // Air-blast shockwave is effectively supersonic and reaches any given
         // distance far sooner than the tsunami — a gravity wave in water that,
         // even in the open ocean, only manages ~700 km/h. It has to fire first
