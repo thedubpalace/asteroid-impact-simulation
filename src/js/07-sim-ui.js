@@ -96,6 +96,8 @@
         resetDebris(smoke);
         resetDebris(soot);
         resetDebris(mistFine);
+        resetDebris(fireball);
+        fireball.mat.uniforms.uOpacity.value = 0;
         ejecta.mat.uniforms.uOpacity.value = 0.95;
         smoke.mat.uniforms.uOpacity.value = 0.72;
         soot.mat.uniforms.uOpacity.value = 0.8;

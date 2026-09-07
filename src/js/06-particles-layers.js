@@ -85,14 +85,18 @@
       tail.material.map = mistTex;
       tail.material.needsUpdate = true;
 
+      // softGrow: falsy = rock (no swell), true = gas (+45% over life), or a
+      // number = gas with that multiple of the swell (fireball billows ~2.5x)
       function makeDebris(count, size, opacity, map, blending, softGrow) {
         const p = new Float32Array(count * 3);
         const c = new Float32Array(count * 3);
         const s = new Float32Array(count);
+        const k = new Float32Array(count);
         const g = new THREE.BufferGeometry();
         g.setAttribute('position', new THREE.BufferAttribute(p, 3));
         g.setAttribute('color', new THREE.BufferAttribute(c, 3));
         g.setAttribute('aSize', new THREE.BufferAttribute(s, 1));
+        g.setAttribute('aScale', new THREE.BufferAttribute(k, 1));
         const mat = new THREE.ShaderMaterial({
           transparent: true, depthWrite: false, depthTest: true,
           blending: blending || THREE.NormalBlending,
@@ -100,30 +104,41 @@
             map: { value: map },
             uOpacity: { value: opacity },
             uScale: { value: size },
-            uGrow: { value: softGrow ? 1.0 : 0.0 }
+            uGrow: { value: softGrow ? 1.0 : 0.0 },
+            uGrowMul: { value: typeof softGrow === 'number' ? softGrow : 1.0 },
+            uCool: { value: 0.0 },
+            uProj: { value: 1000.0 }
           },
           vertexShader: [
-            'attribute float aSize; attribute vec3 color;',
+            'attribute float aSize; attribute float aScale; attribute vec3 color;',
             'varying vec3 vColor; varying float vLife;',
-            'uniform float uScale; uniform float uGrow;',
+            'uniform float uScale; uniform float uGrow; uniform float uGrowMul; uniform float uProj;',
             'void main(){',
             '  vColor=color;',
             '  vLife=aSize;',
             '  float dist=length(position);',
-            '  // shrink before the camera-facing quad can clip Earth into a circle',
-            '  float lift=smoothstep(2.46, 2.62, dist);',
             '  vec4 mv=modelViewMatrix*vec4(position,1.0);',
-            '  float rnd=fract(sin(dot(position.xy+position.z, vec2(12.9898,78.233)))*43758.5453);',
             '  float age=1.0-aSize;',
-            '  float grow=mix(1.0, 1.0+age*0.45, uGrow);',
-            '  float sz=mix(uScale*0.55,uScale*1.05,rnd)*grow*lift;',
+            '  float grow=mix(1.0, 1.0+age*0.45*uGrowMul, uGrow);',
+            '  // per-particle size is fixed at spawn (aScale) — hashing it off the',
+            '  // moving position made every sprite flicker in size frame to frame',
+            '  float sz0=uScale*aScale*grow;',
+            '  // shrink before the camera-facing quad can clip Earth into a circle.',
+            '  // The clip only happens once the quad half-width exceeds the altitude,',
+            '  // so scale the threshold with the sprite instead of a fixed 0.22 —',
+            '  // that floor forced every launch to start ~2 crater radii up in the air',
+            '  float lift=smoothstep(2.4+sz0*0.35, 2.4+sz0*1.25, dist);',
+            '  float sz=sz0*lift;',
             '  if(aSize<0.001 || sz<0.0008){ gl_PointSize=0.0; gl_Position=vec4(2.0,2.0,2.0,1.0); return; }',
-            '  gl_PointSize=sz*(280.0/max(1.2,-mv.z));',
+            '  // uProj = drawing-buffer height / (2 tan(fov/2)): uScale is a true',
+            '  // world-space sprite width. The old fixed 280 was ~4x too small for',
+            '  // this viewport, so the whole ash column rendered as a faint dusting.',
+            '  gl_PointSize=sz*(uProj/max(1.2,-mv.z));',
             '  gl_Position=projectionMatrix*mv;',
             '}'
           ].join('\n'),
           fragmentShader: [
-            'uniform sampler2D map; uniform float uOpacity; uniform float uGrow;',
+            'uniform sampler2D map; uniform float uOpacity; uniform float uGrow; uniform float uCool;',
             'varying vec3 vColor; varying float vLife;',
             'void main(){',
             '  vec2 pc=gl_PointCoord-vec2(0.5);',
@@ -137,28 +152,49 @@
             '  // distance would sand its spikes back down into a circle',
             '  float rim=mix(1.0, 1.0-smoothstep(0.42,0.92,rr), uGrow);',
             '  float soft=pow(max(tex.a,0.0), mix(1.15, 0.88, uGrow))*rim;',
-            '  float a=soft*uOpacity*fade;',
+            '  // incandescent gas (uCool=1) radiates its heat away over its life:',
+            '  // white-yellow -> orange -> dull red -> gone, handing over to the ash',
+            '  float cool=uCool*smoothstep(0.03,0.72,age);',
+            '  vec3 col=mix(vColor, vColor*vec3(0.55,0.16,0.04), cool);',
+            '  float a=soft*uOpacity*fade*(1.0-cool*0.85);',
             '  if(a<0.012) discard;',
-            '  gl_FragColor=vec4(vColor,a);',
+            '  gl_FragColor=vec4(col,a);',
             '}'
           ].join('\n')
         });
         const pts = new THREE.Points(g, mat);
+        // the bounding sphere is computed once, on first render, while every
+        // particle is still parked at (80,80,80) — so the default frustum
+        // culling threw the whole system away on every frame after that
+        pts.frustumCulled = false;
         earthGroup.add(pts);
+        debrisSystems.push(mat);
         const parts = [];
         for (let i = 0; i < count; i++) {
           parts.push({ life: 0, max: 1, pos: new THREE.Vector3(80, 80, 80), vel: new THREE.Vector3(), spin: Math.random(), grow: 1 });
           p[i * 3] = p[i * 3 + 1] = p[i * 3 + 2] = 80;
           s[i] = 0;
+          k[i] = 1;
         }
-        return { count, p, c, s, g, pts, parts, mat };
+        return { count, p, c, s, k, g, pts, parts, mat };
       }
 
+      const debrisSystems = [];
+      function setDebrisProj() {
+        const px = renderer.domElement.height / (2 * Math.tan(42 * 0.5 * Math.PI / 180));
+        debrisSystems.forEach((m) => { m.uniforms.uProj.value = px; });
+      }
       // Dense enough to read as a column, large enough to keep mass without sprites
-      const ejecta = makeDebris(1800, 0.014, 0.98, gritTex, THREE.NormalBlending, false);
-      const smoke = makeDebris(4200, 0.038, 0.58, cloudTex, THREE.NormalBlending, true);
-      const soot = makeDebris(3200, 0.030, 0.58, sootTex, THREE.NormalBlending, true);
-      const mistFine = makeDebris(2600, 0.032, 0.40, mistTex, THREE.NormalBlending, true);
+      const ejecta = makeDebris(1800, 0.017, 0.98, gritTex, THREE.NormalBlending, false);
+      const smoke = makeDebris(4200, 0.05, 0.58, cloudTex, THREE.NormalBlending, true);
+      const soot = makeDebris(3200, 0.046, 0.58, sootTex, THREE.NormalBlending, true);
+      const mistFine = makeDebris(2600, 0.04, 0.40, mistTex, THREE.NormalBlending, true);
+      // incandescent vapour fireball — the ~1/3 of impact energy that goes into
+      // shock-heating rock and seawater, rising and billowing off the crater in
+      // the first seconds before it cools into the ash column above
+      const fireball = makeDebris(900, 0.06, 0.55, cloudTex, THREE.AdditiveBlending, 2.6);
+      fireball.mat.uniforms.uCool.value = 1.0;
+      setDebrisProj();
 
       // No camera-facing plume sprites. A billboard through the crater
       // clips Earth as a circle whose rim sits on the hit and tracks the camera.
@@ -238,7 +274,7 @@
       wireLayerToggle('layer-ejecta', [ejectaFan]);
       wireLayerToggle('layer-scorch', [scorch]);
       wireLayerToggle('layer-fog', [groundFog]);
-      wireLayerToggle('layer-particles', [ejecta.pts, smoke.pts, soot.pts, mistFine.pts]);
+      wireLayerToggle('layer-particles', [ejecta.pts, smoke.pts, soot.pts, mistFine.pts, fireball.pts]);
       wireLayerToggle('layer-clouds', [clouds, highClouds]);
       wireLayerToggle('layer-bloom', [impactBloom]);
       wireLayerToggle('layer-tsunami', [tsunami]);
@@ -264,24 +300,56 @@
         sys.g.attributes.aSize.needsUpdate = true;
       }
 
-      function spawnBurst(sys, origin, normal, n, speed, spread, life, palette, jet) {
+      // jet: false = loose scatter, true = pre-lofted column,
+      //   'curtain' = ejecta curtain: an inverted cone launched off a ring of
+      //     radius ringR (the growing rim) at ~45deg, densest at the rim. Big
+      //     blocks go slow (land first, closest); fines go fast and far.
+      //   'plume' = fireball: born low over the crater with an upward velocity
+      //     so it visibly rises, instead of appearing already lofted.
+      function spawnBurst(sys, origin, normal, n, speed, spread, life, palette, jet, ringR) {
         let spawned = 0;
+        const basis = (jet === 'curtain' || jet === 'plume') ? impactBasis(origin) : null;
         for (let i = 0; i < sys.count && spawned < n; i++) {
           const pr = sys.parts[i];
           if (pr.life > 0) continue;
-          // random cone — wide scatter avoids ring / shell stacking
-          const rx = Math.random() - 0.5, ry = Math.random() - 0.5, rz = Math.random() - 0.5;
-          const dir = normal.clone().add(new THREE.Vector3(rx, ry, rz).multiplyScalar(spread)).normalize();
-          const heightBias = Math.pow(Math.random(), jet ? 0.48 : 1.05);
-          const lift = jet ? (0.28 + heightBias * 1.45) : (0.18 + Math.random() * 0.32);
-          pr.pos.copy(origin).addScaledVector(dir, 0.08 + Math.random() * 0.22);
-          pr.pos.addScaledVector(normal, 0.34 + lift * (jet ? 0.95 : 0.58));
-          const spd = speed * (0.28 + Math.random() * 1.15 + heightBias * 0.45);
-          pr.vel.copy(dir).multiplyScalar(spd);
-          if (jet) pr.vel.addScaledVector(normal, speed * (0.28 + heightBias * 0.95));
-          pr.vel.x += (Math.random() - 0.5) * speed * 0.18;
-          pr.vel.y += (Math.random() - 0.5) * speed * 0.18;
-          pr.vel.z += (Math.random() - 0.5) * speed * 0.18;
+          let scl = 0.55 + Math.random() * 0.5;
+          if (basis) {
+            const az = Math.random() * Math.PI * 2;
+            const radial = basis.tangent.clone().multiplyScalar(Math.cos(az)).addScaledVector(basis.bitan, Math.sin(az));
+            const rr = (ringR || 0) * (jet === 'curtain' ? 0.6 + Math.random() * 0.4 : Math.sqrt(Math.random()) * 0.8);
+            pr.pos.copy(origin).addScaledVector(radial, rr).addScaledVector(normal, 0.02 + Math.random() * 0.04);
+            if (jet === 'curtain') {
+              // size-sorted: a few big blocks, mostly fines small enough to
+              // vanish once they land far out, so the distal spray doesn't
+              // read as a field of marbles
+              const big = Math.pow(Math.random(), 2.4);
+              scl = 0.28 + big * 2.0;
+              const el = (38 + (Math.random() - 0.5) * spread) * Math.PI / 180;
+              pr.vel.copy(normal).multiplyScalar(Math.sin(el)).addScaledVector(radial, Math.cos(el));
+              pr.vel.multiplyScalar(speed * (0.3 + (1 - big) * 0.9 + Math.random() * 0.25));
+            } else {
+              pr.vel.copy(normal).multiplyScalar(speed * (0.55 + Math.random() * 0.75));
+              pr.vel.addScaledVector(radial, speed * Math.random() * spread);
+            }
+            pr.vel.x += (Math.random() - 0.5) * speed * 0.08;
+            pr.vel.y += (Math.random() - 0.5) * speed * 0.08;
+            pr.vel.z += (Math.random() - 0.5) * speed * 0.08;
+          } else {
+            // random cone — wide scatter avoids ring / shell stacking
+            const rx = Math.random() - 0.5, ry = Math.random() - 0.5, rz = Math.random() - 0.5;
+            const dir = normal.clone().add(new THREE.Vector3(rx, ry, rz).multiplyScalar(spread)).normalize();
+            const heightBias = Math.pow(Math.random(), jet ? 0.48 : 1.05);
+            const lift = jet ? (0.28 + heightBias * 1.45) : (0.18 + Math.random() * 0.32);
+            pr.pos.copy(origin).addScaledVector(dir, 0.02 + Math.random() * 0.08);
+            pr.pos.addScaledVector(normal, 0.03 + lift * (jet ? 0.22 : 0.12));
+            const spd = speed * (0.28 + Math.random() * 1.15 + heightBias * 0.45);
+            pr.vel.copy(dir).multiplyScalar(spd);
+            if (jet) pr.vel.addScaledVector(normal, speed * (0.28 + heightBias * 0.95));
+            pr.vel.x += (Math.random() - 0.5) * speed * 0.18;
+            pr.vel.y += (Math.random() - 0.5) * speed * 0.18;
+            pr.vel.z += (Math.random() - 0.5) * speed * 0.18;
+          }
+          sys.k[i] = scl;
           pr.max = life * (0.5 + Math.random() * 0.9);
           pr.life = pr.max;
           pr.spin = Math.random() * Math.PI * 2;
@@ -296,12 +364,22 @@
         }
         sys.g.attributes.color.needsUpdate = true;
         sys.g.attributes.aSize.needsUpdate = true;
+        sys.g.attributes.aScale.needsUpdate = true;
       }
 
       const _n = new THREE.Vector3();
       const _side = new THREE.Vector3();
+      const _fwd = new THREE.Vector3();
       const _up = new THREE.Vector3(0.2, 1, 0.1);
-      function stepDebris(sys, dt, drag, gravity, floorR, rise, swirl) {
+      // drag/gravity/rise/swirl are tuned as per-frame-at-60fps amounts; scale
+      // them by dt so the slow-motion window around contact actually slows the
+      // ballistics too (rocks used to keep falling at full speed while the
+      // rest of the frame crawled) and frame rate stops changing the arcs
+      // settle: seconds of life left once a particle touches the floor (rocks
+      // on the ground fade out instead of lying there for their full life)
+      function stepDebris(sys, dt, drag, gravity, floorR, rise, swirl, settle) {
+        const fr = dt * 60;
+        const dragF = Math.pow(drag, fr);
         for (let i = 0; i < sys.count; i++) {
           const pr = sys.parts[i];
           if (pr.life <= 0) {
@@ -316,15 +394,21 @@
           pr.life -= dt;
           const age = 1 - pr.life / pr.max;
           sys.s[i] = Math.max(0.001, pr.life / pr.max);
-          pr.vel.multiplyScalar(drag);
+          pr.vel.multiplyScalar(dragF);
           _n.copy(pr.pos);
           const plen = _n.length();
           if (plen > 1e-6) _n.multiplyScalar(1 / plen);
-          if (gravity) pr.vel.addScaledVector(_n, gravity);
-          if (rise) pr.vel.addScaledVector(_n, rise * (1 - age * 0.65));
+          if (gravity) pr.vel.addScaledVector(_n, gravity * fr);
+          if (rise) pr.vel.addScaledVector(_n, rise * (1 - age * 0.65) * fr);
           if (swirl) {
+            // turbulent widening: a per-particle random horizontal direction
+            // (spin is random) — the old single-axis push along n x up flung
+            // the whole column sideways into one long horizontal stream
             _side.crossVectors(_n, _up).normalize();
-            pr.vel.addScaledVector(_side, Math.sin(pr.spin * 40 + age * 8) * swirl);
+            _fwd.crossVectors(_n, _side);
+            const ph = pr.spin * 40 + age * 8;
+            pr.vel.addScaledVector(_side, Math.sin(ph) * swirl * fr);
+            pr.vel.addScaledVector(_fwd, Math.cos(ph) * swirl * fr);
           }
           pr.pos.addScaledVector(pr.vel, dt);
           if (floorR) {
@@ -333,6 +417,7 @@
               pr.pos.multiplyScalar((floorR + 0.008) / Math.max(len, 1e-6));
               _n.copy(pr.pos).multiplyScalar(1 / (floorR + 0.008));
               pr.vel.reflect(_n).multiplyScalar(0.18);
+              if (settle && pr.life > settle) pr.life = settle;
             }
           }
           sys.p[i * 3] = pr.pos.x;

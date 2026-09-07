@@ -128,6 +128,10 @@
           [0.62, 0.58, 0.54], [0.46, 0.43, 0.40], [0.54, 0.51, 0.48],
           [0.36, 0.34, 0.31], [0.50, 0.47, 0.44]
         ];
+        const firePal = [
+          [1.0, 0.92, 0.72], [1.0, 0.78, 0.42], [1.0, 0.6, 0.22],
+          [0.98, 0.46, 0.14], [1.0, 0.86, 0.58]
+        ];
 
         const impactAge = t >= 12.4 ? t - 12.4 : -1;
         if (t >= 12.4 && flashPeak === 0) flashPeak = 1;
@@ -179,22 +183,6 @@
           camera.updateProjectionMatrix();
           asteroid.visible = false;
           if (ft > 8.5) hud.flash.style.opacity = 0;
-          if (debrisBurst === 0) {
-            debrisBurst = 1;
-            // throw speeds pulled back to match the smaller crater — rock
-            // ejecta ~0.5x (the ballistic arc reads as crater-scaled), the
-            // smoke/soot/mist column ~0.7x so the plume base still fits the pit
-            // while the winter pall keeps building
-            spawnBurst(ejecta, impactPoint, impactNormal, 980, 1.9, 2.25, 6.4, rockPal, false);
-            spawnBurst(ejecta, impactPoint, impactNormal, 620, 2.5, 1.05, 4.6, rockPal, true);
-            spawnBurst(smoke, impactPoint, impactNormal, 1400, 0.82, 0.95, 22, smokePal, true);
-            spawnBurst(smoke, impactPoint, impactNormal, 1100, 0.45, 1.55, 26, smokePal, true);
-            spawnBurst(smoke, impactPoint, impactNormal, 760, 0.2, 2.15, 28, smokePal, false);
-            spawnBurst(soot, impactPoint, impactNormal, 1100, 0.56, 1.75, 24, sootPal, true);
-            spawnBurst(soot, impactPoint, impactNormal, 780, 0.26, 2.45, 28, sootPal, true);
-            spawnBurst(mistFine, impactPoint, impactNormal, 860, 0.38, 1.7, 20, mistPal, true);
-            spawnBurst(mistFine, impactPoint, impactNormal, 620, 0.17, 2.35, 24, mistPal, false);
-          }
           craterGroup.visible = true;
           const grow = ease(clamp01(ft / 1.15));
           const craterScale = 0.38 + grow * 0.98;
@@ -204,6 +192,37 @@
           // craterFloor does, so boulders track the terrain height it's
           // rendered at instead of resting at the un-scaled (wrong) height
           boulderGroup.scale.set(1 / craterScale, 1 / craterScale, 1);
+          // world-space radius of the rim as it excavates outward
+          const rimR = CRATER_R * craterScale;
+          if (debrisBurst === 0) {
+            debrisBurst = 1;
+            // Contact energy partition: the earliest ejecta is the fastest —
+            // shocked fines jetted steeply off the contact point — while the
+            // vapour fireball is born low over the pit and *rises* (velocity +
+            // buoyant lift in stepDebris) rather than appearing pre-lofted.
+            spawnBurst(ejecta, impactPoint, impactNormal, 220, 0.46, 30, 5.5, rockPal, 'curtain', rimR * 0.6);
+            spawnBurst(fireball, impactPoint, impactNormal, 480, 0.14, 0.55, 5.0, firePal, 'plume', rimR * 1.4);
+            // the ash/steam column also starts low and climbs behind the fireball
+            spawnBurst(smoke, impactPoint, impactNormal, 1400, 0.1, 0.7, 22, smokePal, 'plume', rimR * 1.6);
+            spawnBurst(smoke, impactPoint, impactNormal, 1100, 0.06, 1.1, 26, smokePal, 'plume', rimR * 2.4);
+            spawnBurst(smoke, impactPoint, impactNormal, 760, 0.07, 2.15, 28, smokePal, false);
+            spawnBurst(soot, impactPoint, impactNormal, 1100, 0.08, 0.9, 24, sootPal, 'plume', rimR * 1.8);
+            spawnBurst(soot, impactPoint, impactNormal, 780, 0.05, 1.4, 28, sootPal, 'plume', rimR * 2.8);
+            spawnBurst(mistFine, impactPoint, impactNormal, 860, 0.07, 0.9, 20, mistPal, 'plume', rimR * 2.0);
+            spawnBurst(mistFine, impactPoint, impactNormal, 620, 0.06, 2.35, 24, mistPal, false);
+          }
+          // Ejecta curtain: an inverted cone launched off the rim as it moves
+          // outward, densest early and near the rim. Launch speed falls as the
+          // excavation slows, so the last (coarsest) material lands closest.
+          if (ft < 2.0) {
+            const ex = 1 - ft / 2.0;
+            spawnBurst(ejecta, impactPoint, impactNormal, 6 + Math.round(26 * ex), 0.26 + ex * 0.24, 22, 5.5, rockPal, 'curtain', rimR * 0.95);
+          }
+          // fireball keeps feeding off the melt for a couple of seconds, then
+          // the column above it is ash only
+          if (ft < 2.4 && Math.random() < 0.75) {
+            spawnBurst(fireball, impactPoint, impactNormal, 10, 0.12, 0.4, 4.5, firePal, 'plume', rimR * 0.9);
+          }
           const cool = clamp01((ft - 1.6) / 10);
           craterFloor.material.emissive.setRGB(
             THREE.MathUtils.lerp(1.0, 0.55, cool),
@@ -239,33 +258,44 @@
         }
 
         if (t >= 12.42 && t < 28) {
-          const rate = t < 14.5 ? 0.95 : (t < 18 ? 0.78 : 0.52);
-          if (Math.random() < rate) {
-            spawnBurst(smoke, impactPoint, impactNormal, 86, 0.2 + Math.random() * 0.28, 1.25, 24, smokePal, true);
-            spawnBurst(mistFine, impactPoint, impactNormal, 64, 0.12 + Math.random() * 0.2, 1.7, 22, mistPal, true);
-            spawnBurst(soot, impactPoint, impactNormal, 58, 0.14 + Math.random() * 0.22, 2.25, 26, sootPal, true);
+          // Sustained venting keeps the column fed from the rim for minutes.
+          // This used to push ~200 pre-lofted, randomly aimed sprites *per
+          // frame* — every slot that freed up was instantly refilled somewhere
+          // in a 0.4-unit cloud, which read as dots over half the hemisphere.
+          // Now a modest per-second trickle, born low and rising like the rest.
+          const feed = (t < 14.5 ? 1.0 : (t < 18 ? 0.7 : 0.4)) * dt * 60;
+          const vent = CRATER_R * 1.3;
+          if (Math.random() < 0.6 * feed) {
+            spawnBurst(smoke, impactPoint, impactNormal, 6, 0.05 + Math.random() * 0.05, 0.8, 24, smokePal, 'plume', vent);
+            spawnBurst(mistFine, impactPoint, impactNormal, 4, 0.04 + Math.random() * 0.04, 0.9, 22, mistPal, 'plume', vent * 1.3);
+            spawnBurst(soot, impactPoint, impactNormal, 4, 0.04 + Math.random() * 0.05, 0.9, 26, sootPal, 'plume', vent);
           }
-          if (t > 14.8 && Math.random() < 0.72) {
-            const high = impactPoint.clone().addScaledVector(impactNormal, 0.45 + Math.random() * 1.15);
-            spawnBurst(smoke, high, impactNormal, 38, 0.08 + Math.random() * 0.14, 1.95, 18, smokePal, false);
-            spawnBurst(mistFine, high, impactNormal, 30, 0.07 + Math.random() * 0.1, 2.15, 16, mistPal, false);
-            spawnBurst(soot, high, impactNormal, 24, 0.07 + Math.random() * 0.12, 2.35, 20, sootPal, false);
-          }
-          if (t < 16.4 && Math.random() < 0.8) {
-            spawnBurst(ejecta, impactPoint, impactNormal, 28, 1.35 + Math.random() * 1.35, 2.1, 4.2, rockPal, false);
-            spawnBurst(ejecta, impactPoint, impactNormal, 16, 2.65, 0.85, 3.2, rockPal, true);
+          if (t > 14.8 && Math.random() < 0.3 * feed) {
+            // a little loose haze shed off the top of the column
+            const high = impactPoint.clone().addScaledVector(impactNormal, 0.15 + Math.random() * 0.25);
+            spawnBurst(smoke, high, impactNormal, 3, 0.02 + Math.random() * 0.03, 1.95, 18, smokePal, false);
+            spawnBurst(mistFine, high, impactNormal, 3, 0.02 + Math.random() * 0.03, 2.15, 16, mistPal, false);
           }
         }
 
-        stepDebris(ejecta, dt, 0.981, -0.68, EARTH_R + 0.06, 0, 0.012);
-        stepDebris(smoke, dt, 0.996, -0.01, EARTH_R + 0.28, 0.055, 0.075);
-        stepDebris(soot, dt, 0.997, -0.006, EARTH_R + 0.30, 0.038, 0.09);
-        stepDebris(mistFine, dt, 0.998, 0.002, EARTH_R + 0.26, 0.042, 0.08);
+        // ejecta gravity was -0.68/frame: ~40 units/s^2, which dropped every
+        // rock within a few frames of launch. ~0.7 units/s^2 gives the curtain
+        // a readable multi-second ballistic arc at crater scale.
+        stepDebris(ejecta, dt, 0.996, -0.012, EARTH_R + 0.012, 0, 0, 0.9);
+        // rise/swirl were ~30x too strong: the column left the frame at
+        // ~13 units/s and sat 70+ radii out by the winter beat. Buoyant lift
+        // now tops out near 0.04 units/s, so the plume climbs ~0.5 units
+        // (a few crater diameters) over the shock beat and stays over the pit.
+        stepDebris(smoke, dt, 0.99, -0.00015, EARTH_R + 0.04, 0.0006, 0.0004);
+        stepDebris(soot, dt, 0.99, -0.0001, EARTH_R + 0.05, 0.00045, 0.0004);
+        stepDebris(mistFine, dt, 0.99, 0, EARTH_R + 0.04, 0.0005, 0.0004);
+        stepDebris(fireball, dt, 0.985, 0, EARTH_R + 0.03, 0.0008, 0.0003);
 
         const after = clamp01((t - 12.4) / 22);
         ejecta.mat.uniforms.uOpacity.value = t > 12.4 ? THREE.MathUtils.lerp(1.0, 0.14, clamp01((t - 12.4) / 7.2)) : 0;
-        smoke.mat.uniforms.uOpacity.value = t > 12.4 ? THREE.MathUtils.lerp(0.88, 0.46, after) : 0;
-        soot.mat.uniforms.uOpacity.value = t > 12.4 ? THREE.MathUtils.lerp(0.92, 0.5, after) : 0;
+        fireball.mat.uniforms.uOpacity.value = t > 12.4 ? 0.55 : 0;
+        smoke.mat.uniforms.uOpacity.value = t > 12.4 ? THREE.MathUtils.lerp(0.7, 0.4, after) : 0;
+        soot.mat.uniforms.uOpacity.value = t > 12.4 ? THREE.MathUtils.lerp(0.55, 0.32, after) : 0;
         mistFine.mat.uniforms.uOpacity.value = t > 12.4 ? THREE.MathUtils.lerp(0.68, 0.32, after) : 0;
 
         if (t >= 12.55) {
@@ -386,5 +416,6 @@
         groundCam.aspect = window.innerWidth / window.innerHeight;
         groundCam.updateProjectionMatrix();
         renderer.setSize(window.innerWidth, window.innerHeight);
+        setDebrisProj();
         sizeGrain();
       });

@@ -29,7 +29,11 @@
           // hold a stable near rig through contact so Earth doesn't "jump away";
           // both near and contact tightened for the smaller crater
           const near = hit.clone().addScaledVector(n, 1.42).addScaledVector(tangent, 1.08).addScaledVector(bitan, 0.42);
-          const contact = hit.clone().addScaledVector(n, 1.18).addScaledVector(tangent, 0.92).addScaledVector(bitan, 0.35);
+          // contact swings round to the south side of the site: OrbitControls'
+          // up is world Y (~local north here), so the vertical plume only reads
+          // as *rising* on screen when the camera sits south of it — from the
+          // east it leans sideways and reads as a jet firing along the ground
+          const contact = hit.clone().addScaledVector(n, 1.12).addScaledVector(tangent, 0.3).addScaledVector(bitan, -0.92);
           const pullback = n.clone().multiplyScalar(8.9).addScaledVector(tangent, 2.4).addScaledVector(bitan, 1.4);
           pos = far.clone().lerp(near, ease(Math.min(1, u * 1.05)));
           if (t >= 12.2) {
