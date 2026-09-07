@@ -35,6 +35,7 @@
         heatLight.intensity = 0;
         dust.material.uniforms.dustR.value = 0;
         dust.material.uniforms.dustOpacity.value = 0;
+        dust.material.uniforms.veilCol.value.copy(VEIL_DUST);
         dust.material.uniforms.time.value = 0;
         scorch.material.uniforms.blanketR.value = 0;
         scorch.material.uniforms.burn.value = 0;

@@ -142,6 +142,7 @@
             impactDir: { value: impactNormal.clone() },
             dustR: { value: 0 },
             dustOpacity: { value: 0 },
+            veilCol: { value: new THREE.Color(0x9a6238) },
             time: { value: 0 }
           },
           vertexShader: [
@@ -155,6 +156,7 @@
           ].join('\n'),
           fragmentShader: [
             'uniform vec3 impactDir; uniform float dustR; uniform float dustOpacity; uniform float time;',
+            'uniform vec3 veilCol;',
             'varying vec3 vN; varying vec3 vWNormal; varying vec3 vWPos;',
             'void main(){',
             '  vec3 ln=normalize(vN);',
@@ -169,7 +171,9 @@
             '  vec3 view=normalize(cameraPosition-vWPos);',
             '  float fres=pow(1.0-max(dot(wn,view),0.0), 1.55);',
             '  float vol=mix(0.12, 1.0, fres);',
-            '  vec3 col=mix(vec3(0.22,0.18,0.14), vec3(0.07,0.055,0.04), cover);',
+            '  // thin edges of the veil carry its colour; the dense middle of it',
+            '  // is already too optically thick to send much of anything back',
+            '  vec3 col=mix(veilCol, veilCol*0.26, cover);',
             '  float a=cover*vol*(0.38+n*0.16);',
             '  if(a<0.006) discard;',
             '  gl_FragColor=vec4(col, clamp(a,0.0,0.62));',

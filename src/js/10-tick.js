@@ -358,27 +358,46 @@
         }
 
         if (t >= 16.8) {
-          const winter = clamp01((t - 16.8) / 11.2);
-          dust.material.uniforms.dustR.value = winter * Math.PI;
-          dust.material.uniforms.dustOpacity.value = THREE.MathUtils.lerp(0.0, 1.45, winter);
+          // Winter onset. Soot from the global fires and rock dust from the
+          // plume load the stratosphere over days and weeks — a slow start,
+          // not a switch — so the optical depth `tau` ramps with a >1 exponent
+          // rather than linearly. Sunlight then falls off exponentially with
+          // that load (Beer-Lambert), which is why the sky reddens for a long
+          // time and then loses the last of its light quickly.
+          const tau = 5.0 * Math.pow(clamp01((t - 16.8) / 17.2), 1.55);
+          const light = Math.exp(-tau);
+          const dim = 1 - light;
+          // the veil goes global well before it goes opaque: it spreads to
+          // cover the planet in the first stretch, then just keeps thickening
+          const spread = ease(clamp01((t - 16.8) / 6.2));
+          const veil = veilTint(_veilSky, dim, VEIL_CLEAR);
+          dust.material.uniforms.dustR.value = spread * Math.PI;
+          dust.material.uniforms.dustOpacity.value = 1.45 * (1 - Math.exp(-tau * 0.7));
+          dust.material.uniforms.veilCol.value.copy(veilTint(_veilDust, dim, VEIL_DUST));
           dust.material.uniforms.time.value = t;
-          fogLayer.material.opacity = THREE.MathUtils.lerp(0.3, 0.08, winter);
-          clouds.material.opacity = THREE.MathUtils.lerp(0.68, 0.16, winter);
-          highClouds.material.opacity = THREE.MathUtils.lerp(0.34, 0.05, winter);
-          haze.material.uniforms.hazeA.value = THREE.MathUtils.lerp(0.08, 0.18, winter);
-          haze.material.uniforms.hazeColor.value.lerpColors(new THREE.Color(0xa8d8ff), new THREE.Color(0x4a3828), winter);
-          nights.material.opacity = THREE.MathUtils.lerp(0.85, 0.05, winter);
-          clouds.material.color.lerpColors(new THREE.Color(0xffffff), new THREE.Color(0x3a3028), winter);
-          highClouds.material.color.lerpColors(new THREE.Color(0xf4f7ff), new THREE.Color(0x2a221c), winter);
-          fogLayer.material.color.lerpColors(new THREE.Color(0xd8e4ee), new THREE.Color(0x241c16), winter);
-          sun.intensity = THREE.MathUtils.lerp(1.85, 0.1, winter);
-          ambient.intensity = THREE.MathUtils.lerp(0.16, 0.05, winter);
-          hemi.intensity = THREE.MathUtils.lerp(0.32, 0.08, winter);
-          renderer.toneMappingExposure = THREE.MathUtils.lerp(1.05, 0.3, winter);
-          atmo.material.uniforms.glowColor.value.lerpColors(new THREE.Color(0x6eb8ff), new THREE.Color(0x3a2818), winter);
-          atmo.material.uniforms.intensity.value = THREE.MathUtils.lerp(1.0, 0.25, winter);
-          controls.autoRotateSpeed = 0.18 + winter * 0.12;
-          hud.dust.textContent = Math.round(winter * 100) + '%';
+          fogLayer.material.opacity = THREE.MathUtils.lerp(0.3, 0.08, dim);
+          clouds.material.opacity = THREE.MathUtils.lerp(0.68, 0.16, dim);
+          highClouds.material.opacity = THREE.MathUtils.lerp(0.34, 0.05, dim);
+          haze.material.uniforms.hazeA.value = THREE.MathUtils.lerp(0.08, 0.18, dim);
+          haze.material.uniforms.hazeColor.value.copy(veil);
+          nights.material.opacity = THREE.MathUtils.lerp(0.85, 0.05, dim);
+          // cloud decks are lit by whatever still gets through, so they carry
+          // the same red-then-grey-then-black arc as the sky above them
+          clouds.material.color.setRGB(1, 1, 1).lerp(veil, dim * 0.92);
+          highClouds.material.color.setHex(0xf4f7ff).lerp(veil, dim * 0.95);
+          fogLayer.material.color.setHex(0xd8e4ee).lerp(veil, dim * 0.95);
+          // insolation is the transmitted fraction; the fills keep a small
+          // floor so the globe stays readable rather than going pure black
+          sun.intensity = 1.85 * light;
+          ambient.intensity = 0.03 + 0.13 * light;
+          hemi.intensity = 0.06 + 0.26 * light;
+          renderer.toneMappingExposure = THREE.MathUtils.lerp(1.05, 0.34, ease(dim));
+          atmo.material.uniforms.glowColor.value.setHex(0x6eb8ff).lerp(veil, dim * 0.9);
+          atmo.material.uniforms.intensity.value = THREE.MathUtils.lerp(1.0, 0.25, dim);
+          controls.autoRotateSpeed = 0.18 + dim * 0.12;
+          // reads as cover, but it is the dimming: a fast climb while the veil
+          // spreads, then a long crawl to full dark. Never a straight line.
+          hud.dust.textContent = Math.round(clamp01(dim / 0.99) * 100) + '%';
         } else {
           dust.material.uniforms.dustR.value = 0;
           dust.material.uniforms.dustOpacity.value = 0;

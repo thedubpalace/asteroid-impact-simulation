@@ -1669,6 +1669,7 @@
             impactDir: { value: impactNormal.clone() },
             dustR: { value: 0 },
             dustOpacity: { value: 0 },
+            veilCol: { value: new THREE.Color(0x9a6238) },
             time: { value: 0 }
           },
           vertexShader: [
@@ -1682,6 +1683,7 @@
           ].join('\n'),
           fragmentShader: [
             'uniform vec3 impactDir; uniform float dustR; uniform float dustOpacity; uniform float time;',
+            'uniform vec3 veilCol;',
             'varying vec3 vN; varying vec3 vWNormal; varying vec3 vWPos;',
             'void main(){',
             '  vec3 ln=normalize(vN);',
@@ -1696,7 +1698,9 @@
             '  vec3 view=normalize(cameraPosition-vWPos);',
             '  float fres=pow(1.0-max(dot(wn,view),0.0), 1.55);',
             '  float vol=mix(0.12, 1.0, fres);',
-            '  vec3 col=mix(vec3(0.22,0.18,0.14), vec3(0.07,0.055,0.04), cover);',
+            '  // thin edges of the veil carry its colour; the dense middle of it',
+            '  // is already too optically thick to send much of anything back',
+            '  vec3 col=mix(veilCol, veilCol*0.26, cover);',
             '  float a=cover*vol*(0.38+n*0.16);',
             '  if(a<0.006) discard;',
             '  gl_FragColor=vec4(col, clamp(a,0.0,0.62));',
@@ -2439,6 +2443,7 @@
         heatLight.intensity = 0;
         dust.material.uniforms.dustR.value = 0;
         dust.material.uniforms.dustOpacity.value = 0;
+        dust.material.uniforms.veilCol.value.copy(VEIL_DUST);
         dust.material.uniforms.time.value = 0;
         scorch.material.uniforms.blanketR.value = 0;
         scorch.material.uniforms.burn.value = 0;
@@ -2638,6 +2643,27 @@
       function thermalPulse(u) {
         if (u <= 0) return 0;
         return ease(clamp01(u / 0.14)) * Math.exp(-Math.max(0, u - 0.14) * 3.6);
+      }
+
+      // Winter veil colour. Thin soot preferentially scatters the short
+      // wavelengths, so the first stage of the pall is a permanent sunset —
+      // the sky reddens long before it darkens. As the load thickens that
+      // flattens out to a dead ash grey, and past a certain optical depth it
+      // simply stops transmitting. Red, then grey, then black: three stages,
+      // not one straight lerp from blue to brown.
+      const VEIL_CLEAR = new THREE.Color(0xa8d8ff);
+      const VEIL_RED = new THREE.Color(0xc4551c);
+      const VEIL_GREY = new THREE.Color(0x4c443a);
+      const VEIL_BLACK = new THREE.Color(0x0a0807);
+      // the veil seen from outside starts as warm ochre rock dust rather than
+      // clear blue sky, but runs through the same three stages after that
+      const VEIL_DUST = new THREE.Color(0x9a6238);
+      const _veilSky = new THREE.Color();
+      const _veilDust = new THREE.Color();
+      function veilTint(out, dim, clear) {
+        if (dim < 0.42) return out.copy(clear).lerp(VEIL_RED, ease(dim / 0.42));
+        if (dim < 0.78) return out.copy(VEIL_RED).lerp(VEIL_GREY, ease((dim - 0.42) / 0.36));
+        return out.copy(VEIL_GREY).lerp(VEIL_BLACK, ease((dim - 0.78) / 0.22));
       }
 
       const camModeEl = document.getElementById('cam-mode');
@@ -3982,27 +4008,46 @@
         }
 
         if (t >= 16.8) {
-          const winter = clamp01((t - 16.8) / 11.2);
-          dust.material.uniforms.dustR.value = winter * Math.PI;
-          dust.material.uniforms.dustOpacity.value = THREE.MathUtils.lerp(0.0, 1.45, winter);
+          // Winter onset. Soot from the global fires and rock dust from the
+          // plume load the stratosphere over days and weeks — a slow start,
+          // not a switch — so the optical depth `tau` ramps with a >1 exponent
+          // rather than linearly. Sunlight then falls off exponentially with
+          // that load (Beer-Lambert), which is why the sky reddens for a long
+          // time and then loses the last of its light quickly.
+          const tau = 5.0 * Math.pow(clamp01((t - 16.8) / 17.2), 1.55);
+          const light = Math.exp(-tau);
+          const dim = 1 - light;
+          // the veil goes global well before it goes opaque: it spreads to
+          // cover the planet in the first stretch, then just keeps thickening
+          const spread = ease(clamp01((t - 16.8) / 6.2));
+          const veil = veilTint(_veilSky, dim, VEIL_CLEAR);
+          dust.material.uniforms.dustR.value = spread * Math.PI;
+          dust.material.uniforms.dustOpacity.value = 1.45 * (1 - Math.exp(-tau * 0.7));
+          dust.material.uniforms.veilCol.value.copy(veilTint(_veilDust, dim, VEIL_DUST));
           dust.material.uniforms.time.value = t;
-          fogLayer.material.opacity = THREE.MathUtils.lerp(0.3, 0.08, winter);
-          clouds.material.opacity = THREE.MathUtils.lerp(0.68, 0.16, winter);
-          highClouds.material.opacity = THREE.MathUtils.lerp(0.34, 0.05, winter);
-          haze.material.uniforms.hazeA.value = THREE.MathUtils.lerp(0.08, 0.18, winter);
-          haze.material.uniforms.hazeColor.value.lerpColors(new THREE.Color(0xa8d8ff), new THREE.Color(0x4a3828), winter);
-          nights.material.opacity = THREE.MathUtils.lerp(0.85, 0.05, winter);
-          clouds.material.color.lerpColors(new THREE.Color(0xffffff), new THREE.Color(0x3a3028), winter);
-          highClouds.material.color.lerpColors(new THREE.Color(0xf4f7ff), new THREE.Color(0x2a221c), winter);
-          fogLayer.material.color.lerpColors(new THREE.Color(0xd8e4ee), new THREE.Color(0x241c16), winter);
-          sun.intensity = THREE.MathUtils.lerp(1.85, 0.1, winter);
-          ambient.intensity = THREE.MathUtils.lerp(0.16, 0.05, winter);
-          hemi.intensity = THREE.MathUtils.lerp(0.32, 0.08, winter);
-          renderer.toneMappingExposure = THREE.MathUtils.lerp(1.05, 0.3, winter);
-          atmo.material.uniforms.glowColor.value.lerpColors(new THREE.Color(0x6eb8ff), new THREE.Color(0x3a2818), winter);
-          atmo.material.uniforms.intensity.value = THREE.MathUtils.lerp(1.0, 0.25, winter);
-          controls.autoRotateSpeed = 0.18 + winter * 0.12;
-          hud.dust.textContent = Math.round(winter * 100) + '%';
+          fogLayer.material.opacity = THREE.MathUtils.lerp(0.3, 0.08, dim);
+          clouds.material.opacity = THREE.MathUtils.lerp(0.68, 0.16, dim);
+          highClouds.material.opacity = THREE.MathUtils.lerp(0.34, 0.05, dim);
+          haze.material.uniforms.hazeA.value = THREE.MathUtils.lerp(0.08, 0.18, dim);
+          haze.material.uniforms.hazeColor.value.copy(veil);
+          nights.material.opacity = THREE.MathUtils.lerp(0.85, 0.05, dim);
+          // cloud decks are lit by whatever still gets through, so they carry
+          // the same red-then-grey-then-black arc as the sky above them
+          clouds.material.color.setRGB(1, 1, 1).lerp(veil, dim * 0.92);
+          highClouds.material.color.setHex(0xf4f7ff).lerp(veil, dim * 0.95);
+          fogLayer.material.color.setHex(0xd8e4ee).lerp(veil, dim * 0.95);
+          // insolation is the transmitted fraction; the fills keep a small
+          // floor so the globe stays readable rather than going pure black
+          sun.intensity = 1.85 * light;
+          ambient.intensity = 0.03 + 0.13 * light;
+          hemi.intensity = 0.06 + 0.26 * light;
+          renderer.toneMappingExposure = THREE.MathUtils.lerp(1.05, 0.34, ease(dim));
+          atmo.material.uniforms.glowColor.value.setHex(0x6eb8ff).lerp(veil, dim * 0.9);
+          atmo.material.uniforms.intensity.value = THREE.MathUtils.lerp(1.0, 0.25, dim);
+          controls.autoRotateSpeed = 0.18 + dim * 0.12;
+          // reads as cover, but it is the dimming: a fast climb while the veil
+          // spreads, then a long crawl to full dark. Never a straight line.
+          hud.dust.textContent = Math.round(clamp01(dim / 0.99) * 100) + '%';
         } else {
           dust.material.uniforms.dustR.value = 0;
           dust.material.uniforms.dustOpacity.value = 0;

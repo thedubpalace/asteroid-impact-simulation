@@ -14,6 +14,27 @@
         return ease(clamp01(u / 0.14)) * Math.exp(-Math.max(0, u - 0.14) * 3.6);
       }
 
+      // Winter veil colour. Thin soot preferentially scatters the short
+      // wavelengths, so the first stage of the pall is a permanent sunset —
+      // the sky reddens long before it darkens. As the load thickens that
+      // flattens out to a dead ash grey, and past a certain optical depth it
+      // simply stops transmitting. Red, then grey, then black: three stages,
+      // not one straight lerp from blue to brown.
+      const VEIL_CLEAR = new THREE.Color(0xa8d8ff);
+      const VEIL_RED = new THREE.Color(0xc4551c);
+      const VEIL_GREY = new THREE.Color(0x4c443a);
+      const VEIL_BLACK = new THREE.Color(0x0a0807);
+      // the veil seen from outside starts as warm ochre rock dust rather than
+      // clear blue sky, but runs through the same three stages after that
+      const VEIL_DUST = new THREE.Color(0x9a6238);
+      const _veilSky = new THREE.Color();
+      const _veilDust = new THREE.Color();
+      function veilTint(out, dim, clear) {
+        if (dim < 0.42) return out.copy(clear).lerp(VEIL_RED, ease(dim / 0.42));
+        if (dim < 0.78) return out.copy(VEIL_RED).lerp(VEIL_GREY, ease((dim - 0.42) / 0.36));
+        return out.copy(VEIL_GREY).lerp(VEIL_BLACK, ease((dim - 0.78) / 0.22));
+      }
+
       const camModeEl = document.getElementById('cam-mode');
       const camLockEl = document.getElementById('cam-lock');
 
