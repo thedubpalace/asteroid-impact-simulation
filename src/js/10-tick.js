@@ -384,15 +384,29 @@
         if (t >= 12.6) {
           const sw = clamp01((t - 12.6) / 3.6);
           shock.visible = shockLayerOn;
-          shock.material.uniforms.waveR.value = sw * 3.15;
+          // a blast wave leaves hypersonic and decays toward the speed of
+          // sound, so the ring covers most of its ground early and crawls late
+          shock.material.uniforms.waveR.value = 3.15 * Math.pow(sw, 0.72);
           shock.material.uniforms.waveW.value = 0.055 + sw * 0.07;
           shock.material.uniforms.waveA.value = (1 - sw) * 1.15;
         }
 
-        if (t >= 13.4) {
-          const tw = clamp01((t - 13.4) / 10.5);
-          tsunami.material.uniforms.waveR.value = tw * 2.4;
-          tsunami.material.uniforms.waveA.value = (1 - tw) * 0.42;
+        // Chicxulub struck a shallow carbonate platform, so the water response
+        // runs in two stages. First the sea collapses back into the open
+        // crater — the resurge, the only thing in the shot moving inward.
+        if (t >= 12.85) {
+          tsunami.material.uniforms.resurge.value = clamp01((t - 12.85) / 1.1);
+        }
+        // Then the rebound sends the train out. A shallow-water wave runs at
+        // sqrt(g*h): a few hundred metres per second over the deep basin, a
+        // tenth of that once it is up on a shelf. It is far slower than the
+        // air blast above and it keeps slowing, so the radius decelerates and
+        // the crests spread apart behind it as the longer waves outrun them.
+        if (t >= 13.7) {
+          const tw = clamp01((t - 13.7) / 10.5);
+          tsunami.material.uniforms.waveR.value = 1.6 * Math.pow(tw, 0.8);
+          tsunami.material.uniforms.trainW.value = 0.085 + tw * 0.13;
+          tsunami.material.uniforms.waveA.value = (1 - tw * 0.72) * 0.5;
         }
 
         if (t >= 16.8) {

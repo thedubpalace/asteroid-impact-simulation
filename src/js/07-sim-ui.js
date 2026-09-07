@@ -49,6 +49,7 @@
         shock.material.uniforms.waveA.value = 0;
         tsunami.material.uniforms.waveR.value = 0;
         tsunami.material.uniforms.waveA.value = 0;
+        tsunami.material.uniforms.resurge.value = 0;
         impactBloom.material.uniforms.bloomR.value = 0;
         impactBloom.material.uniforms.bloomA.value = 0;
         craterGroup.visible = false;
@@ -131,6 +132,7 @@
         const prev = oceanGlint.material.uniforms.waterMap.value;
         oceanGlint.material.uniforms.waterMap.value = tex;
         scorch.material.uniforms.waterMap.value = tex;
+        tsunami.material.uniforms.waterMap.value = tex;
         if (prev && prev !== tex && prev.dispose) prev.dispose();
         waterMap = tex;
       }
