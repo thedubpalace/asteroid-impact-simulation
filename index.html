@@ -1764,6 +1764,12 @@
         size: 0.038, vertexColors: true, transparent: true, opacity: 0.95,
         blending: THREE.AdditiveBlending, depthWrite: false, depthTest: false, sizeAttenuation: true
       }));
+      // Same trap as the debris systems: the bounding sphere is computed once,
+      // on the first render, while every point is still parked at (80,80,80).
+      // The frustum then never contains it and the whole trail is culled on
+      // every frame after that — which is why the ablation streak had never
+      // actually appeared on screen.
+      tail.frustumCulled = false;
       scene.add(tail);
 
       const shock = new THREE.Mesh(
@@ -2795,9 +2801,11 @@
       function emitTail(origin, dir, alive, heat) {
         const h = heat || 0;
         for (let i = 0; i < TAIL; i++) {
-          if (tailLife[i] <= 0 && alive && Math.random() < 0.42 + h * 0.55) {
+          if (tailLife[i] <= 0 && alive && Math.random() < 0.3 + h * 0.68) {
             tailLife[i] = 1;
-            const spread = 0.055 + h * 0.12;
+            // a narrow ablation column, not a cloud — the streak should read as
+            // a drawn line behind the bolide, not a swarm of separate blobs
+            const spread = 0.018 + h * 0.05;
             tailPos[i * 3] = origin.x + (Math.random() - 0.5) * spread;
             tailPos[i * 3 + 1] = origin.y + (Math.random() - 0.5) * spread;
             tailPos[i * 3 + 2] = origin.z + (Math.random() - 0.5) * spread;
@@ -2818,10 +2826,12 @@
             tailPos[i * 3] += dir.x * drift + (Math.random() - 0.5) * 0.012;
             tailPos[i * 3 + 1] += dir.y * drift + (Math.random() - 0.5) * 0.012;
             tailPos[i * 3 + 2] += dir.z * drift + (Math.random() - 0.5) * 0.012;
-            if (tailLife[i] < 0.4) {
-              tailCol[i * 3] *= 0.97;
-              tailCol[i * 3 + 1] *= 0.93;
-              tailCol[i * 3 + 2] *= 0.91;
+            // stripped material cools as it falls behind, so the streak runs
+            // white-hot at the bolide down to a dull red at its far end
+            if (tailLife[i] < 0.72) {
+              tailCol[i * 3] *= 0.985;
+              tailCol[i * 3 + 1] *= 0.945;
+              tailCol[i * 3 + 2] *= 0.915;
             }
           } else {
             tailPos[i * 3] = tailPos[i * 3 + 1] = tailPos[i * 3 + 2] = 80;
@@ -2829,7 +2839,7 @@
         }
         tailGeo.attributes.position.needsUpdate = true;
         tailGeo.attributes.color.needsUpdate = true;
-        tail.material.size = 0.038 + h * 0.07;
+        tail.material.size = 0.012 + h * 0.035;
       }
 
       function formatAlt(km) {
@@ -3715,29 +3725,47 @@
         if (vel.lengthSq() > 1e-8) vel.normalize();
         else vel.copy(hit).normalize().negate();
         asteroid.position.copy(posA);
+        // A 10 km bolide crosses the ~100 km of atmosphere that matters in
+        // about 2-3 s. Before that it is a cold rock coasting in vacuum, and
+        // ram pressure (~ air density x v^2, and density climbs exponentially
+        // with depth) only lights it up right at the end — so the bolide is at
+        // its most brilliant at the instant of contact, not before it.
+        const air = clamp01((t - 9.9) / 2.5);
+        const blaze = Math.pow(air, 2.2);
         if (asteroid.visible) {
+          // faint pre-entry ember only; the fireball itself is all `blaze`
           const heat = clamp01((approachU - 0.18) / 0.82);
-          const entry = clamp01((approachU - 0.62) / 0.38);
           const flicker = 0.88 + 0.12 * Math.sin(t * 37.0) + 0.06 * Math.sin(t * 71.0);
-          // kill glow well before contact so the mesh never intersects Earth
-          const contactFade = 1 - clamp01((approachU - 0.78) / 0.14);
-          fireCore.material.opacity = (0.18 + heat * 0.55 + entry * 0.28) * flicker * contactFade;
-          fireShell.material.opacity = (0.08 + heat * 0.32 + entry * 0.28) * flicker * contactFade;
+          // These glow shells are solid additive spheres, so once the rock is
+          // within a shell radius of the ground they read as a hard disc pasted
+          // on the surface. Fade them out over the last ~0.2 world units of
+          // altitude and let the point light, the mesh emissive and the
+          // precursor flash carry the final instant. (This used to start at
+          // approachU 0.78 — a whole second early, killing the fireball on the
+          // way down instead of at the ground.)
+          const contactFade = clamp01((posA.length() - EARTH_R + 0.01) / 0.08);
+          fireCore.material.opacity = (0.06 + heat * 0.12 + blaze * 0.82) * flicker * contactFade;
+          fireShell.material.opacity = (0.02 + heat * 0.07 + blaze * 0.7) * flicker * contactFade;
           fireHalo.material.opacity = 0;
           fireHalo.visible = false;
-          plasmaShell.material.opacity = entry * 0.22 * flicker * contactFade;
+          // shock-heated air ahead of the rock — only exists once there is air
+          plasmaShell.material.opacity = blaze * 0.42 * flicker * contactFade;
           plasmaHalo.material.opacity = 0;
           plasmaHalo.visible = false;
           fireCore.visible = contactFade > 0.02;
           fireShell.visible = contactFade > 0.02;
           plasmaShell.visible = contactFade > 0.02;
-          const pulse = 1 + entry * 0.12 + Math.sin(t * 28.0) * entry * 0.03;
+          // the ablation envelope inflates as it burns
+          const pulse = 1 + blaze * 0.5 + Math.sin(t * 28.0) * blaze * 0.04;
           fireCore.scale.setScalar(ASTEROID_R * 1.42 * pulse);
-          fireShell.scale.setScalar(ASTEROID_R * 2.05 * pulse);
-          plasmaShell.scale.setScalar(ASTEROID_R * 1.68 * pulse);
-          heatLight.intensity = 0.55 + heat * 3.2 + entry * 6.5;
-          asteroid.material.emissiveIntensity = 0.28 + heat * 1.25 + entry * 2.1;
-          asteroid.scale.setScalar(1 + entry * 0.04 + Math.sin(t * 40) * entry * 0.015);
+          fireShell.scale.setScalar(ASTEROID_R * (2.05 + blaze * 1.1) * pulse);
+          plasmaShell.scale.setScalar(ASTEROID_R * (1.68 + blaze * 0.5) * pulse);
+          heatLight.intensity = 0.35 + heat * 1.1 + blaze * 5.5;
+          // hotter means whiter: the ablating surface runs up the blackbody
+          // ramp from dull red to a white-yellow that outshines the daylit sea
+          asteroid.material.emissive.setRGB(1, 0.23 + blaze * 0.62, 0.03 + blaze * 0.5);
+          asteroid.material.emissiveIntensity = 0.28 + heat * 0.6 + blaze * 5.5;
+          asteroid.scale.setScalar(1 + blaze * 0.05 + Math.sin(t * 40) * blaze * 0.02);
         } else {
           fireCore.material.opacity = 0;
           fireShell.material.opacity = 0;
@@ -3747,15 +3775,25 @@
           fireCore.visible = false;
           fireShell.visible = false;
           plasmaShell.visible = false;
+          // The bolide's own light dies with it. This used to be left at its
+          // last entry value for the whole rest of the shot, quietly washing
+          // out the crater from a light source that no longer exists.
+          heatLight.intensity *= Math.pow(0.02, realDt);
         }
 
-        const altKm = THREE.MathUtils.lerp(1.2e6, 0, approachU);
+        // the readout used to run one straight line from 1.2 million km to
+        // zero, so it passed through every atmospheric altitude in the last
+        // thousandth of the shot. The final 2.5 s is the atmosphere: 120 km.
+        const altKm = air > 0 ? THREE.MathUtils.lerp(120, 0, air)
+          : THREE.MathUtils.lerp(1.2e6, 120, clamp01(t / 9.9));
         const spd = approachU >= 1 ? 0 : THREE.MathUtils.lerp(20.4, 19.6, approachU);
         hud.speed.textContent = spd.toFixed(1) + ' km/s';
         hud.alt.textContent = approachU >= 1 ? '0 km' : formatAlt(altKm);
 
-        const tailAlive = asteroid.visible && t < 11.9;
-        emitTail(posA, vel.clone().multiplyScalar(-1), tailAlive, clamp01((approachU - 0.55) / 0.45));
+        // the ablation trail runs all the way to the ground — cutting it at
+        // 11.9 left the last second of the fall with no streak at all
+        const tailAlive = asteroid.visible && t < 12.4;
+        emitTail(posA, vel.clone().multiplyScalar(-1), tailAlive, blaze);
         tail.visible = tailAlive;
 
         atmo.material.uniforms.sunDir.value.copy(sun.position).normalize();
@@ -3793,8 +3831,10 @@
           const pulse = rise * decay;
           const longGlow = Math.exp(-ft * 0.28);
 
-          // brief, dim full-frame punch — a blink, not a sustained white-out
-          hud.flash.style.opacity = String(Math.min(0.16, (ft < 0.16 ? ease(ft / 0.04) * (1 - ft / 0.22) : 0)));
+          // Brief, dim full-frame punch — a blink, not a sustained white-out.
+          // It picks up from the precursor's level instead of restarting from
+          // zero, so the frame does not drop dark for an instant at contact.
+          hud.flash.style.opacity = String(ft < 0.22 ? (0.13 + ease(clamp01(ft / 0.05)) * 0.06) * (1 - ft / 0.22) : 0);
           hud.heat.style.opacity = '0';
 
           // incandescent fireball cap over the crater. bloomR is an angular
@@ -3816,7 +3856,8 @@
           // as the only lit thing at the site, which read as a pale film.)
           craterLight.intensity = 2.2 + pulse * 6.0 + melt * 2.6;
           // atmospheric flare hugs the impact meridian only
-          atmo.material.uniforms.impactGlow.value = pulse * 0.4 + melt * 0.1;
+          // likewise hand over from the precursor's atmospheric flare
+          atmo.material.uniforms.impactGlow.value = Math.max(pulse * 0.4 + melt * 0.1, 0.3 * Math.exp(-ft * 6));
 
           // barely a pop — the daylit disc must not clip to white on contact
           renderer.toneMappingExposure = THREE.MathUtils.lerp(1.05, 1.09, Math.min(1, pulse * 0.98)) * (0.94 + longGlow * 0.12);
@@ -3911,6 +3952,13 @@
             camera.updateProjectionMatrix();
           }
           hud.heat.style.opacity = '0';
+          // Precursor: the column of air ahead of the bolide is compressed to
+          // incandescence a beat before the rock itself arrives, so the sky
+          // over the site lights up first and the impact flash takes over from
+          // an already-bright frame rather than from black.
+          const precursor = Math.pow(clamp01((t - 12.02) / 0.38), 3.0);
+          hud.flash.style.opacity = (precursor * 0.13).toFixed(3);
+          atmo.material.uniforms.impactGlow.value = precursor * 0.3;
           nights.material.opacity = 0.2 + 0.7 * (0.5 + 0.5 * Math.sin(earthGroup.rotation.y + 0.8));
         }
 

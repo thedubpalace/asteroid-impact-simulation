@@ -237,6 +237,12 @@
         size: 0.038, vertexColors: true, transparent: true, opacity: 0.95,
         blending: THREE.AdditiveBlending, depthWrite: false, depthTest: false, sizeAttenuation: true
       }));
+      // Same trap as the debris systems: the bounding sphere is computed once,
+      // on the first render, while every point is still parked at (80,80,80).
+      // The frustum then never contains it and the whole trail is culled on
+      // every frame after that — which is why the ablation streak had never
+      // actually appeared on screen.
+      tail.frustumCulled = false;
       scene.add(tail);
 
       const shock = new THREE.Mesh(

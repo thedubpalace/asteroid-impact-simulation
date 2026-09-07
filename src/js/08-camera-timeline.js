@@ -164,9 +164,11 @@
       function emitTail(origin, dir, alive, heat) {
         const h = heat || 0;
         for (let i = 0; i < TAIL; i++) {
-          if (tailLife[i] <= 0 && alive && Math.random() < 0.42 + h * 0.55) {
+          if (tailLife[i] <= 0 && alive && Math.random() < 0.3 + h * 0.68) {
             tailLife[i] = 1;
-            const spread = 0.055 + h * 0.12;
+            // a narrow ablation column, not a cloud — the streak should read as
+            // a drawn line behind the bolide, not a swarm of separate blobs
+            const spread = 0.018 + h * 0.05;
             tailPos[i * 3] = origin.x + (Math.random() - 0.5) * spread;
             tailPos[i * 3 + 1] = origin.y + (Math.random() - 0.5) * spread;
             tailPos[i * 3 + 2] = origin.z + (Math.random() - 0.5) * spread;
@@ -187,10 +189,12 @@
             tailPos[i * 3] += dir.x * drift + (Math.random() - 0.5) * 0.012;
             tailPos[i * 3 + 1] += dir.y * drift + (Math.random() - 0.5) * 0.012;
             tailPos[i * 3 + 2] += dir.z * drift + (Math.random() - 0.5) * 0.012;
-            if (tailLife[i] < 0.4) {
-              tailCol[i * 3] *= 0.97;
-              tailCol[i * 3 + 1] *= 0.93;
-              tailCol[i * 3 + 2] *= 0.91;
+            // stripped material cools as it falls behind, so the streak runs
+            // white-hot at the bolide down to a dull red at its far end
+            if (tailLife[i] < 0.72) {
+              tailCol[i * 3] *= 0.985;
+              tailCol[i * 3 + 1] *= 0.945;
+              tailCol[i * 3 + 2] *= 0.915;
             }
           } else {
             tailPos[i * 3] = tailPos[i * 3 + 1] = tailPos[i * 3 + 2] = 80;
@@ -198,7 +202,7 @@
         }
         tailGeo.attributes.position.needsUpdate = true;
         tailGeo.attributes.color.needsUpdate = true;
-        tail.material.size = 0.038 + h * 0.07;
+        tail.material.size = 0.012 + h * 0.035;
       }
 
       function formatAlt(km) {
