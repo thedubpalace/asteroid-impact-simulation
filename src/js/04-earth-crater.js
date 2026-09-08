@@ -189,28 +189,55 @@
       const craterPosArr = new Float32Array(craterVertN * 3);
       const craterUvArr = new Float32Array(craterVertN * 2);
       const craterCol = new Float32Array(craterVertN * 3);
-      function craterVertex(vi, x, y) {
+      // Crater morphology over time. A basin this size does not simply appear
+      // at its final shape. The impact digs a deep, narrow transient bowl,
+      // which is far too steep to stand up in its own gravity. Over the next
+      // minutes the walls collapse inward and slump outward — widening the
+      // crater well beyond the transient one — while the floor rebounds. The
+      // rebound overshoots into a central uplift, and that uplift then
+      // collapses outward and freezes as a peak ring.
+      //   m    0 = transient bowl, 1 = settled peak-ring basin
+      //   peak the rebound overshoot, rising and falling back to zero
+      // craterHeight() below mirrors the m=1, peak=0 case for the boulders.
+      function craterProfile(rn, n, m, peak) {
+        // transient: a deep paraboloid, narrower than the final crater, with
+        // a sharp overturned lip right at its edge and nothing beyond
+        let zt;
+        if (rn < 0.62) {
+          const u = rn / 0.62;
+          zt = -0.145 * (1 - u * u) * (1.05 + n * 0.1);
+        } else if (rn < 0.8) {
+          zt = 0.030 * Math.sin(((rn - 0.62) / 0.18) * Math.PI) * (0.8 + n * 0.35);
+        } else {
+          zt = 0.003 * (1 - (rn - 0.8) / 0.2) * (0.55 + n * 0.5);
+        }
+        // settled: shallow central floor, peak ring, annular trough, terraced rim
+        let zf;
+        if (rn < 0.16) {
+          zf = -0.055 * (1 - rn / 0.16) * (1.08 + n * 0.12);
+        } else if (rn < 0.3) {
+          const pk = (rn - 0.16) / 0.14;
+          zf = -0.022 + 0.028 * Math.sin(pk * Math.PI) * (0.82 + n * 0.4);
+        } else if (rn < 0.56) {
+          const bowl = 1 - (rn - 0.3) / 0.26;
+          zf = -0.038 * bowl * bowl * (1.05 + n * 0.2);
+        } else if (rn < 0.8) {
+          const rimT = (rn - 0.56) / 0.24;
+          zf = 0.022 * Math.sin(rimT * Math.PI) * (0.72 + n * 0.4);
+        } else {
+          zf = 0.004 * (1 - (rn - 0.8) / 0.2) * (0.55 + n * 0.5);
+        }
+        const spike = peak * 0.075 * Math.pow(Math.max(0, 1 - rn / 0.22), 1.6);
+        // hold depth:width fixed as CRATER_R shrinks
+        return (zt + (zf - zt) * m + spike) * CRATER_RELIEF;
+      }
+      function craterVertex(vi, x, y, m, peak) {
         const r = Math.sqrt(x * x + y * y);
         const ang = Math.atan2(y, x);
         const n = Math.sin(ang * 5.0 + 0.4) * 0.22 + Math.sin(ang * 11.0 + 1.7) * 0.12
           + Math.sin(x * 38 + y * 27) * 0.1 + Math.sin(x * 71 - y * 53) * 0.05;
         const rn = r / CRATER_R;
-        let z = 0;
-        if (rn < 0.16) {
-          z = -0.055 * (1 - rn / 0.16) * (1.08 + n * 0.12);
-        } else if (rn < 0.3) {
-          const pk = (rn - 0.16) / 0.14;
-          z = -0.022 + 0.028 * Math.sin(pk * Math.PI) * (0.82 + n * 0.4);
-        } else if (rn < 0.56) {
-          const bowl = 1 - (rn - 0.3) / 0.26;
-          z = -0.038 * bowl * bowl * (1.05 + n * 0.2);
-        } else if (rn < 0.8) {
-          const rimT = (rn - 0.56) / 0.24;
-          z = 0.022 * Math.sin(rimT * Math.PI) * (0.72 + n * 0.4);
-        } else {
-          z = 0.004 * (1 - (rn - 0.8) / 0.2) * (0.55 + n * 0.5);
-        }
-        z *= CRATER_RELIEF;   // hold depth:width fixed as CRATER_R shrinks
+        const z = craterProfile(rn, n, m, peak);
         const scallop = 1 + n * 0.06 * Math.min(1, rn * 1.2);
         // Same flat-tangent-plane problem sphereWrap already fixed for boulders:
         // this disc's local x/y is a flat plane at the impact point, and the
@@ -231,14 +258,6 @@
         craterCol[vi * 3 + 1] = 0.055 + melt * 0.2 + ash * 0.08;
         craterCol[vi * 3 + 2] = 0.035 + melt * 0.05 + ash * 0.04;
       }
-      craterVertex(0, 0, 0);
-      for (let ring = 1; ring <= CRATER_RINGS; ring++) {
-        const r = (ring / CRATER_RINGS) * CRATER_R;
-        for (let seg = 0; seg < CRATER_SEGS; seg++) {
-          const theta = (seg / CRATER_SEGS) * Math.PI * 2;
-          craterVertex(1 + (ring - 1) * CRATER_SEGS + seg, Math.cos(theta) * r, Math.sin(theta) * r);
-        }
-      }
       const craterIdx = [];
       for (let seg = 0; seg < CRATER_SEGS; seg++) {
         craterIdx.push(0, 1 + seg, 1 + (seg + 1) % CRATER_SEGS);
@@ -257,7 +276,21 @@
       craterGeo.setAttribute('uv', new THREE.BufferAttribute(craterUvArr, 2));
       craterGeo.setAttribute('color', new THREE.BufferAttribute(craterCol, 3));
       craterGeo.setIndex(craterIdx);
-      craterGeo.computeVertexNormals();
+      // ~3k vertices, cheap enough to re-lay every frame while the basin is
+      // still moving; the tick stops calling this once the shape has settled
+      function buildCrater(m, peak) {
+        craterVertex(0, 0, 0, m, peak);
+        for (let ring = 1; ring <= CRATER_RINGS; ring++) {
+          const r = (ring / CRATER_RINGS) * CRATER_R;
+          for (let seg = 0; seg < CRATER_SEGS; seg++) {
+            const theta = (seg / CRATER_SEGS) * Math.PI * 2;
+            craterVertex(1 + (ring - 1) * CRATER_SEGS + seg, Math.cos(theta) * r, Math.sin(theta) * r, m, peak);
+          }
+        }
+        craterGeo.attributes.position.needsUpdate = true;
+        craterGeo.computeVertexNormals();
+      }
+      buildCrater(0, 0);
       const craterFloor = new THREE.Mesh(
         craterGeo,
         new THREE.MeshStandardMaterial({

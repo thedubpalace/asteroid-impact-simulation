@@ -1160,28 +1160,55 @@
       const craterPosArr = new Float32Array(craterVertN * 3);
       const craterUvArr = new Float32Array(craterVertN * 2);
       const craterCol = new Float32Array(craterVertN * 3);
-      function craterVertex(vi, x, y) {
+      // Crater morphology over time. A basin this size does not simply appear
+      // at its final shape. The impact digs a deep, narrow transient bowl,
+      // which is far too steep to stand up in its own gravity. Over the next
+      // minutes the walls collapse inward and slump outward — widening the
+      // crater well beyond the transient one — while the floor rebounds. The
+      // rebound overshoots into a central uplift, and that uplift then
+      // collapses outward and freezes as a peak ring.
+      //   m    0 = transient bowl, 1 = settled peak-ring basin
+      //   peak the rebound overshoot, rising and falling back to zero
+      // craterHeight() below mirrors the m=1, peak=0 case for the boulders.
+      function craterProfile(rn, n, m, peak) {
+        // transient: a deep paraboloid, narrower than the final crater, with
+        // a sharp overturned lip right at its edge and nothing beyond
+        let zt;
+        if (rn < 0.62) {
+          const u = rn / 0.62;
+          zt = -0.145 * (1 - u * u) * (1.05 + n * 0.1);
+        } else if (rn < 0.8) {
+          zt = 0.030 * Math.sin(((rn - 0.62) / 0.18) * Math.PI) * (0.8 + n * 0.35);
+        } else {
+          zt = 0.003 * (1 - (rn - 0.8) / 0.2) * (0.55 + n * 0.5);
+        }
+        // settled: shallow central floor, peak ring, annular trough, terraced rim
+        let zf;
+        if (rn < 0.16) {
+          zf = -0.055 * (1 - rn / 0.16) * (1.08 + n * 0.12);
+        } else if (rn < 0.3) {
+          const pk = (rn - 0.16) / 0.14;
+          zf = -0.022 + 0.028 * Math.sin(pk * Math.PI) * (0.82 + n * 0.4);
+        } else if (rn < 0.56) {
+          const bowl = 1 - (rn - 0.3) / 0.26;
+          zf = -0.038 * bowl * bowl * (1.05 + n * 0.2);
+        } else if (rn < 0.8) {
+          const rimT = (rn - 0.56) / 0.24;
+          zf = 0.022 * Math.sin(rimT * Math.PI) * (0.72 + n * 0.4);
+        } else {
+          zf = 0.004 * (1 - (rn - 0.8) / 0.2) * (0.55 + n * 0.5);
+        }
+        const spike = peak * 0.075 * Math.pow(Math.max(0, 1 - rn / 0.22), 1.6);
+        // hold depth:width fixed as CRATER_R shrinks
+        return (zt + (zf - zt) * m + spike) * CRATER_RELIEF;
+      }
+      function craterVertex(vi, x, y, m, peak) {
         const r = Math.sqrt(x * x + y * y);
         const ang = Math.atan2(y, x);
         const n = Math.sin(ang * 5.0 + 0.4) * 0.22 + Math.sin(ang * 11.0 + 1.7) * 0.12
           + Math.sin(x * 38 + y * 27) * 0.1 + Math.sin(x * 71 - y * 53) * 0.05;
         const rn = r / CRATER_R;
-        let z = 0;
-        if (rn < 0.16) {
-          z = -0.055 * (1 - rn / 0.16) * (1.08 + n * 0.12);
-        } else if (rn < 0.3) {
-          const pk = (rn - 0.16) / 0.14;
-          z = -0.022 + 0.028 * Math.sin(pk * Math.PI) * (0.82 + n * 0.4);
-        } else if (rn < 0.56) {
-          const bowl = 1 - (rn - 0.3) / 0.26;
-          z = -0.038 * bowl * bowl * (1.05 + n * 0.2);
-        } else if (rn < 0.8) {
-          const rimT = (rn - 0.56) / 0.24;
-          z = 0.022 * Math.sin(rimT * Math.PI) * (0.72 + n * 0.4);
-        } else {
-          z = 0.004 * (1 - (rn - 0.8) / 0.2) * (0.55 + n * 0.5);
-        }
-        z *= CRATER_RELIEF;   // hold depth:width fixed as CRATER_R shrinks
+        const z = craterProfile(rn, n, m, peak);
         const scallop = 1 + n * 0.06 * Math.min(1, rn * 1.2);
         // Same flat-tangent-plane problem sphereWrap already fixed for boulders:
         // this disc's local x/y is a flat plane at the impact point, and the
@@ -1202,14 +1229,6 @@
         craterCol[vi * 3 + 1] = 0.055 + melt * 0.2 + ash * 0.08;
         craterCol[vi * 3 + 2] = 0.035 + melt * 0.05 + ash * 0.04;
       }
-      craterVertex(0, 0, 0);
-      for (let ring = 1; ring <= CRATER_RINGS; ring++) {
-        const r = (ring / CRATER_RINGS) * CRATER_R;
-        for (let seg = 0; seg < CRATER_SEGS; seg++) {
-          const theta = (seg / CRATER_SEGS) * Math.PI * 2;
-          craterVertex(1 + (ring - 1) * CRATER_SEGS + seg, Math.cos(theta) * r, Math.sin(theta) * r);
-        }
-      }
       const craterIdx = [];
       for (let seg = 0; seg < CRATER_SEGS; seg++) {
         craterIdx.push(0, 1 + seg, 1 + (seg + 1) % CRATER_SEGS);
@@ -1228,7 +1247,21 @@
       craterGeo.setAttribute('uv', new THREE.BufferAttribute(craterUvArr, 2));
       craterGeo.setAttribute('color', new THREE.BufferAttribute(craterCol, 3));
       craterGeo.setIndex(craterIdx);
-      craterGeo.computeVertexNormals();
+      // ~3k vertices, cheap enough to re-lay every frame while the basin is
+      // still moving; the tick stops calling this once the shape has settled
+      function buildCrater(m, peak) {
+        craterVertex(0, 0, 0, m, peak);
+        for (let ring = 1; ring <= CRATER_RINGS; ring++) {
+          const r = (ring / CRATER_RINGS) * CRATER_R;
+          for (let seg = 0; seg < CRATER_SEGS; seg++) {
+            const theta = (seg / CRATER_SEGS) * Math.PI * 2;
+            craterVertex(1 + (ring - 1) * CRATER_SEGS + seg, Math.cos(theta) * r, Math.sin(theta) * r, m, peak);
+          }
+        }
+        craterGeo.attributes.position.needsUpdate = true;
+        craterGeo.computeVertexNormals();
+      }
+      buildCrater(0, 0);
       const craterFloor = new THREE.Mesh(
         craterGeo,
         new THREE.MeshStandardMaterial({
@@ -2516,6 +2549,7 @@
         impactBloom.material.uniforms.bloomA.value = 0;
         craterGroup.visible = false;
         craterGroup.scale.setScalar(0.001);
+        buildCrater(0, 0);
         boulderGroup.scale.setScalar(1);
         craterFloor.material.emissiveIntensity = 0;
         craterFloor.material.emissive.set(0xff6a18);
@@ -2720,6 +2754,23 @@
         if (dim < 0.42) return out.copy(clear).lerp(VEIL_RED, ease(dim / 0.42));
         if (dim < 0.78) return out.copy(VEIL_RED).lerp(VEIL_GREY, ease((dim - 0.42) / 0.36));
         return out.copy(VEIL_GREY).lerp(VEIL_BLACK, ease((dim - 0.78) / 0.22));
+      }
+
+      // Impact melt cooling. A sheet of shock-melted rock kilometres thick
+      // radiates its way down the blackbody ramp: white-hot, then yellow,
+      // orange, a dull red, and finally a black glass crust. It is the
+      // slowest-changing thing at the site and it outlasts every other glow.
+      const MELT_WHITE = new THREE.Color(0xfff2d8);
+      const MELT_YELLOW = new THREE.Color(0xffb43c);
+      const MELT_ORANGE = new THREE.Color(0xff5a10);
+      const MELT_RED = new THREE.Color(0x8c1604);
+      const MELT_BLACK = new THREE.Color(0x140a06);
+      const _melt = new THREE.Color();
+      function meltTint(u) {
+        if (u < 0.18) return _melt.copy(MELT_WHITE).lerp(MELT_YELLOW, ease(u / 0.18));
+        if (u < 0.45) return _melt.copy(MELT_YELLOW).lerp(MELT_ORANGE, ease((u - 0.18) / 0.27));
+        if (u < 0.75) return _melt.copy(MELT_ORANGE).lerp(MELT_RED, ease((u - 0.45) / 0.30));
+        return _melt.copy(MELT_RED).lerp(MELT_BLACK, ease((u - 0.75) / 0.25));
       }
 
       const camModeEl = document.getElementById('cam-mode');
@@ -3925,9 +3976,20 @@
           asteroid.visible = false;
           if (ft > 8.5) hud.flash.style.opacity = 0;
           craterGroup.visible = true;
-          const grow = ease(clamp01(ft / 1.15));
-          const craterScale = 0.38 + grow * 0.98;
+          // Excavation opens the transient bowl in under a second. The crater
+          // then keeps widening for a couple more as its oversteepened walls
+          // fail and slump outward — the final basin is far wider than the
+          // hole the impact actually dug.
+          const dig = ease(clamp01(ft / 0.8));
+          const slump = ease(clamp01((ft - 0.8) / 2.4));
+          const craterScale = 0.34 + dig * 0.72 + slump * 0.30;
           craterGroup.scale.setScalar(craterScale);
+          // The floor rebounds as the walls come down, and overshoots into a
+          // central uplift that then collapses outward into the peak ring.
+          const peakUp = ft < 2.4
+            ? ease(clamp01((ft - 1.2) / 1.2))
+            : 1 - ease(clamp01((ft - 2.4) / 2.0));
+          if (ft < 5.2) buildCrater(slump, peakUp);
           // counter-scale x/y only, so boulders don't slide radially as the
           // crater pops open — but let z follow craterGroup's own scale like
           // craterFloor does, so boulders track the terrain height it's
@@ -3971,13 +4033,12 @@
           if (ft < 2.4 && Math.random() < 0.75) {
             spawnBurst(fireball, impactPoint, impactNormal, 10, 0.12, 0.4, 4.5, firePal, 'plume', rimR * 0.9);
           }
-          const cool = clamp01((ft - 1.6) / 10);
-          craterFloor.material.emissive.setRGB(
-            THREE.MathUtils.lerp(1.0, 0.55, cool),
-            THREE.MathUtils.lerp(0.48, 0.12, cool),
-            THREE.MathUtils.lerp(0.12, 0.03, cool)
-          );
-          craterFloor.material.emissiveIntensity = 0.8 + pulse * 1.4 + melt * 0.95 - cool * 0.4;
+          // Melt-sheet cooling. Radiated power falls far faster than colour
+          // does, so the sheet loses most of its brightness early and then
+          // sits as a dull red crust for a long time before it goes black.
+          const cool = clamp01((ft - 0.4) / 11);
+          craterFloor.material.emissive.copy(meltTint(cool));
+          craterFloor.material.emissiveIntensity = 0.1 + pulse * 1.2 + 2.0 * Math.pow(1 - cool, 2.2);
           // A light cool-down ash on the floor colour — the import build leaves
           // this at full white, but a slight knock-back keeps the interior from
           // reading as a bare un-ashed hole once the land around it scorches.
@@ -3986,12 +4047,19 @@
           // black. Keep it gentle.
           const ashTint = THREE.MathUtils.lerp(1.0, 0.72, cool);
           craterFloor.material.color.setRGB(ashTint, ashTint * 0.95, ashTint * 0.9);
-          meltPool.material.opacity = Math.min(0.58, 0.16 + pulse * 0.34 + melt * 0.2) * (1 - cool * 0.55);
-          meltHalo.material.opacity = Math.min(0.26, 0.07 + pulse * 0.17 + melt * 0.1) * (1 - cool * 0.48);
-          meltOuter.material.opacity = Math.min(0.14, 0.03 + pulse * 0.09 + melt * 0.06) * (1 - cool * 0.4);
+          // the pool is thickest at the centre, so it holds its heat longest;
+          // the thin outer skin crusts over first
+          meltPool.material.color.copy(meltTint(cool * 0.72));
+          meltHalo.material.color.copy(meltTint(cool));
+          meltOuter.material.color.copy(meltTint(Math.min(1, cool * 1.35)));
+          meltPool.material.opacity = Math.min(0.58, 0.16 + pulse * 0.34 + melt * 0.2) * Math.pow(1 - cool, 1.3);
+          meltHalo.material.opacity = Math.min(0.26, 0.07 + pulse * 0.17 + melt * 0.1) * Math.pow(1 - cool, 1.5);
+          meltOuter.material.opacity = Math.min(0.14, 0.03 + pulse * 0.09 + melt * 0.06) * Math.pow(1 - cool, 1.8);
           ejectaFan.material.opacity = Math.min(0.72, ease(clamp01(ft / 1.25)) * 0.66);
           boulders.forEach((b, i) => {
-            b.material.opacity = grow;
+            // the terrace megablocks are *products* of the collapse, so they
+            // arrive with it rather than with the initial excavation
+            b.material.opacity = slump;
             b.material.emissiveIntensity = (0.35 + melt * 1.4) * (1 - cool * 0.6) * (0.55 + (i % 3) * 0.2);
           });
           nights.material.opacity = THREE.MathUtils.lerp(0.85, 0.08, Math.min(1, pulse * 0.85 + melt * 0.7));

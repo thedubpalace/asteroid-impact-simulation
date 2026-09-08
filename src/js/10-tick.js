@@ -215,9 +215,20 @@
           asteroid.visible = false;
           if (ft > 8.5) hud.flash.style.opacity = 0;
           craterGroup.visible = true;
-          const grow = ease(clamp01(ft / 1.15));
-          const craterScale = 0.38 + grow * 0.98;
+          // Excavation opens the transient bowl in under a second. The crater
+          // then keeps widening for a couple more as its oversteepened walls
+          // fail and slump outward — the final basin is far wider than the
+          // hole the impact actually dug.
+          const dig = ease(clamp01(ft / 0.8));
+          const slump = ease(clamp01((ft - 0.8) / 2.4));
+          const craterScale = 0.34 + dig * 0.72 + slump * 0.30;
           craterGroup.scale.setScalar(craterScale);
+          // The floor rebounds as the walls come down, and overshoots into a
+          // central uplift that then collapses outward into the peak ring.
+          const peakUp = ft < 2.4
+            ? ease(clamp01((ft - 1.2) / 1.2))
+            : 1 - ease(clamp01((ft - 2.4) / 2.0));
+          if (ft < 5.2) buildCrater(slump, peakUp);
           // counter-scale x/y only, so boulders don't slide radially as the
           // crater pops open — but let z follow craterGroup's own scale like
           // craterFloor does, so boulders track the terrain height it's
@@ -261,13 +272,12 @@
           if (ft < 2.4 && Math.random() < 0.75) {
             spawnBurst(fireball, impactPoint, impactNormal, 10, 0.12, 0.4, 4.5, firePal, 'plume', rimR * 0.9);
           }
-          const cool = clamp01((ft - 1.6) / 10);
-          craterFloor.material.emissive.setRGB(
-            THREE.MathUtils.lerp(1.0, 0.55, cool),
-            THREE.MathUtils.lerp(0.48, 0.12, cool),
-            THREE.MathUtils.lerp(0.12, 0.03, cool)
-          );
-          craterFloor.material.emissiveIntensity = 0.8 + pulse * 1.4 + melt * 0.95 - cool * 0.4;
+          // Melt-sheet cooling. Radiated power falls far faster than colour
+          // does, so the sheet loses most of its brightness early and then
+          // sits as a dull red crust for a long time before it goes black.
+          const cool = clamp01((ft - 0.4) / 11);
+          craterFloor.material.emissive.copy(meltTint(cool));
+          craterFloor.material.emissiveIntensity = 0.1 + pulse * 1.2 + 2.0 * Math.pow(1 - cool, 2.2);
           // A light cool-down ash on the floor colour — the import build leaves
           // this at full white, but a slight knock-back keeps the interior from
           // reading as a bare un-ashed hole once the land around it scorches.
@@ -276,12 +286,19 @@
           // black. Keep it gentle.
           const ashTint = THREE.MathUtils.lerp(1.0, 0.72, cool);
           craterFloor.material.color.setRGB(ashTint, ashTint * 0.95, ashTint * 0.9);
-          meltPool.material.opacity = Math.min(0.58, 0.16 + pulse * 0.34 + melt * 0.2) * (1 - cool * 0.55);
-          meltHalo.material.opacity = Math.min(0.26, 0.07 + pulse * 0.17 + melt * 0.1) * (1 - cool * 0.48);
-          meltOuter.material.opacity = Math.min(0.14, 0.03 + pulse * 0.09 + melt * 0.06) * (1 - cool * 0.4);
+          // the pool is thickest at the centre, so it holds its heat longest;
+          // the thin outer skin crusts over first
+          meltPool.material.color.copy(meltTint(cool * 0.72));
+          meltHalo.material.color.copy(meltTint(cool));
+          meltOuter.material.color.copy(meltTint(Math.min(1, cool * 1.35)));
+          meltPool.material.opacity = Math.min(0.58, 0.16 + pulse * 0.34 + melt * 0.2) * Math.pow(1 - cool, 1.3);
+          meltHalo.material.opacity = Math.min(0.26, 0.07 + pulse * 0.17 + melt * 0.1) * Math.pow(1 - cool, 1.5);
+          meltOuter.material.opacity = Math.min(0.14, 0.03 + pulse * 0.09 + melt * 0.06) * Math.pow(1 - cool, 1.8);
           ejectaFan.material.opacity = Math.min(0.72, ease(clamp01(ft / 1.25)) * 0.66);
           boulders.forEach((b, i) => {
-            b.material.opacity = grow;
+            // the terrace megablocks are *products* of the collapse, so they
+            // arrive with it rather than with the initial excavation
+            b.material.opacity = slump;
             b.material.emissiveIntensity = (0.35 + melt * 1.4) * (1 - cool * 0.6) * (0.55 + (i % 3) * 0.2);
           });
           nights.material.opacity = THREE.MathUtils.lerp(0.85, 0.08, Math.min(1, pulse * 0.85 + melt * 0.7));

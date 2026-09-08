@@ -35,6 +35,23 @@
         return out.copy(VEIL_GREY).lerp(VEIL_BLACK, ease((dim - 0.78) / 0.22));
       }
 
+      // Impact melt cooling. A sheet of shock-melted rock kilometres thick
+      // radiates its way down the blackbody ramp: white-hot, then yellow,
+      // orange, a dull red, and finally a black glass crust. It is the
+      // slowest-changing thing at the site and it outlasts every other glow.
+      const MELT_WHITE = new THREE.Color(0xfff2d8);
+      const MELT_YELLOW = new THREE.Color(0xffb43c);
+      const MELT_ORANGE = new THREE.Color(0xff5a10);
+      const MELT_RED = new THREE.Color(0x8c1604);
+      const MELT_BLACK = new THREE.Color(0x140a06);
+      const _melt = new THREE.Color();
+      function meltTint(u) {
+        if (u < 0.18) return _melt.copy(MELT_WHITE).lerp(MELT_YELLOW, ease(u / 0.18));
+        if (u < 0.45) return _melt.copy(MELT_YELLOW).lerp(MELT_ORANGE, ease((u - 0.18) / 0.27));
+        if (u < 0.75) return _melt.copy(MELT_ORANGE).lerp(MELT_RED, ease((u - 0.45) / 0.30));
+        return _melt.copy(MELT_RED).lerp(MELT_BLACK, ease((u - 0.75) / 0.25));
+      }
+
       const camModeEl = document.getElementById('cam-mode');
       const camLockEl = document.getElementById('cam-lock');
 

@@ -54,6 +54,7 @@
         impactBloom.material.uniforms.bloomA.value = 0;
         craterGroup.visible = false;
         craterGroup.scale.setScalar(0.001);
+        buildCrater(0, 0);
         boulderGroup.scale.setScalar(1);
         craterFloor.material.emissiveIntensity = 0;
         craterFloor.material.emissive.set(0xff6a18);
