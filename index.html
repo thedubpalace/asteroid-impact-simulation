@@ -2566,9 +2566,11 @@
         hud.flash.style.opacity = 0;
         renderer.toneMappingExposure = 1.05;
         sun.intensity = 1.85;
+        sun.color.copy(SUN_DAY);
         ambient.intensity = 0.16;
+        ambient.color.copy(AMB_DAY);
         hemi.intensity = 0.32;
-        renderer.toneMappingExposure = 1.05;
+        hemi.color.copy(SKY_DAY);
         atmo.material.uniforms.glowColor.value.set(0x6eb8ff);
         atmo.material.uniforms.intensity.value = 1.0;
         fogLayer.material.opacity = 0.3;
@@ -2771,6 +2773,25 @@
         if (u < 0.45) return _melt.copy(MELT_YELLOW).lerp(MELT_ORANGE, ease((u - 0.18) / 0.27));
         if (u < 0.75) return _melt.copy(MELT_ORANGE).lerp(MELT_RED, ease((u - 0.45) / 0.30));
         return _melt.copy(MELT_RED).lerp(MELT_BLACK, ease((u - 0.75) / 0.25));
+      }
+
+      // White balance. The light reaching the ground is filtered through more
+      // and more soot, so direct sun reddens the way it does through a wildfire
+      // plume, and the sky term goes from a clear blue bounce to brown murk.
+      // Driven by the same optical depth the winter dimming uses, so colour and
+      // brightness are two views of one quantity rather than two timelines.
+      const SUN_DAY = new THREE.Color(0xfff2d8);
+      const SUN_DUSK = new THREE.Color(0xff9a4a);
+      const SUN_EMBER = new THREE.Color(0x7a2c10);
+      const SKY_DAY = new THREE.Color(0x1a3a6a);
+      const SKY_MURK = new THREE.Color(0x4a3524);
+      const SKY_DEAD = new THREE.Color(0x1c120c);
+      const AMB_DAY = new THREE.Color(0x0c1224);
+      const AMB_DEAD = new THREE.Color(0x1a1008);
+      const _sunC = new THREE.Color();
+      function sunTint(dim) {
+        if (dim < 0.5) return _sunC.copy(SUN_DAY).lerp(SUN_DUSK, ease(dim / 0.5));
+        return _sunC.copy(SUN_DUSK).lerp(SUN_EMBER, ease((dim - 0.5) / 0.5));
       }
 
       const camModeEl = document.getElementById('cam-mode');
@@ -3674,7 +3695,7 @@
         dinoMat.color.copy(DINO_LIVE);
       }
 
-      function updateGround(t) {
+      function updateGround(t, expoIn) {
         const pe = clamp01((t - EXT_T0) / (EXT_T1 - EXT_T0));
         const dt = 1 / 60;
         // Ground-level view of the same thermal pulse the globe beat shows
@@ -3727,7 +3748,14 @@
         groundHemi.color.setHex(0x5e5548).lerp(BROIL_LIGHT, broilG * 0.85);
         emberBand.material.opacity = 0.3 * (1 - clamp01(pe / 0.72)) + broilG * 0.5;
         mistGlow.material.opacity = 0.85 * (1 - clamp01(pe / 0.45)); // last light, snuffed by ~pe 0.45
-        renderer.toneMappingExposure = THREE.MathUtils.lerp(1.1, 0.46, dk);
+        // Continue the film's exposure rather than cutting to a new one. The
+        // globe beat ends almost black; the eye (and the camera) opens up as
+        // the frame comes out of the veil, and from there the pall closes it
+        // down again. The ramp is short and sits under the veil's fade-out.
+        const cut = ease(clamp01(pe / 0.06));
+        renderer.toneMappingExposure = THREE.MathUtils.lerp(
+          expoIn === undefined ? 1.1 : expoIn,
+          THREE.MathUtils.lerp(1.1, 0.46, dk), cut);
 
         // smoke banks: several clumps drifting across, thickening from a thin
         // haze at the start to a heavy pall by mid-phase
@@ -3884,6 +3912,13 @@
         const dt = realDt * timeScale;
         const phase = currentPhase(t);
         const total = clamp01(t / PHASES[PHASES.length - 1].t1);
+        // EXPOSURE. Four separate writers used to own this — the contact block,
+        // the winter block, the pre-impact branch and the ground scene — and
+        // each one set an absolute value, so they stepped against each other at
+        // every boundary they shared. Now every stage contributes a factor to
+        // one running value that starts at daylight, and it is written to the
+        // renderer exactly once, just before the frame is drawn.
+        let expo = 1.05;
 
         // black wipe over the cut from the globe to the ground scene
         let veilA = 0;
@@ -4045,8 +4080,12 @@
           // likewise hand over from the precursor's atmospheric flare
           atmo.material.uniforms.impactGlow.value = Math.max(pulse * 0.4 + melt * 0.1, 0.3 * Math.exp(-ft * 6));
 
-          // barely a pop — the daylit disc must not clip to white on contact
-          renderer.toneMappingExposure = THREE.MathUtils.lerp(1.05, 1.09, Math.min(1, pulse * 0.98)) * (0.94 + longGlow * 0.12);
+          // Contact flare: a lift that eases in over the first frames rather
+          // than stepping at t=12.4, and decays back to daylight instead of
+          // leaving the film permanently 6% darker the way the old constant
+          // 0.94 term did. The veil's dimming then takes it from there.
+          const flareUp = ease(clamp01(ft / 0.12));
+          expo *= 1 + (0.06 * longGlow + 0.038 * Math.min(1, pulse * 0.98)) * flareUp;
 
           // soft impact jolt — enough punch without shoving Earth out of frame
           const shakeAmt = reduceMotion ? 0 : (ft < 1.8 ? (1 - ft / 1.8) * 0.048 : (ft < 5 ? (1 - (ft - 1.8) / 3.2) * 0.014 : 0));
@@ -4306,7 +4345,13 @@
           sun.intensity = 1.85 * light;
           ambient.intensity = 0.03 + 0.13 * light;
           hemi.intensity = 0.06 + 0.26 * light;
-          renderer.toneMappingExposure = THREE.MathUtils.lerp(1.05, 0.34, ease(dim));
+          // a factor, not a value: it continues the contact arc instead of
+          // resetting to daylight the moment the winter block takes over
+          expo *= THREE.MathUtils.lerp(1.0, 0.324, ease(dim));
+          // white balance rides the same optical depth as the dimming
+          sun.color.copy(sunTint(dim));
+          hemi.color.copy(SKY_DAY).lerp(SKY_MURK, Math.min(1, dim * 1.6)).lerp(SKY_DEAD, clamp01((dim - 0.62) / 0.38));
+          ambient.color.copy(AMB_DAY).lerp(AMB_DEAD, dim);
           atmo.material.uniforms.glowColor.value.setHex(0x6eb8ff).lerp(veil, dim * 0.9);
           atmo.material.uniforms.intensity.value = THREE.MathUtils.lerp(1.0, 0.25, dim);
           controls.autoRotateSpeed = 0.18 + dim * 0.12;
@@ -4327,7 +4372,9 @@
           sun.intensity = 1.85;
           ambient.intensity = 0.16;
           hemi.intensity = 0.32;
-          if (t < 12.4) renderer.toneMappingExposure = 1.05;
+          sun.color.copy(SUN_DAY);
+          hemi.color.copy(SKY_DAY);
+          ambient.color.copy(AMB_DAY);
           atmo.material.uniforms.glowColor.value.set(0x6eb8ff);
           atmo.material.uniforms.intensity.value = 1.0;
           controls.autoRotateSpeed = 0.18;
@@ -4343,8 +4390,10 @@
         hud.progress.style.width = (total * 100).toFixed(1) + '%';
 
         if (onGround) {
-          // ground scene owns the frame now — skip the globe camera rig
-          updateGround(t);
+          // ground scene owns the frame now — skip the globe camera rig. It is
+          // handed the exposure the globe beat ended on so it can open up out
+          // of it rather than cutting to a different one.
+          updateGround(t, expo);
           renderer.render(groundScene, groundCam);
           requestAnimationFrame(tick);
           return;
@@ -4361,6 +4410,7 @@
         }
         controls.update();
         if (t >= 12.4) pinFxToImpact(hit);
+        renderer.toneMappingExposure = expo;
         renderer.render(scene, camera);
         requestAnimationFrame(tick);
       }

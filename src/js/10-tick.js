@@ -38,6 +38,13 @@
         const dt = realDt * timeScale;
         const phase = currentPhase(t);
         const total = clamp01(t / PHASES[PHASES.length - 1].t1);
+        // EXPOSURE. Four separate writers used to own this — the contact block,
+        // the winter block, the pre-impact branch and the ground scene — and
+        // each one set an absolute value, so they stepped against each other at
+        // every boundary they shared. Now every stage contributes a factor to
+        // one running value that starts at daylight, and it is written to the
+        // renderer exactly once, just before the frame is drawn.
+        let expo = 1.05;
 
         // black wipe over the cut from the globe to the ground scene
         let veilA = 0;
@@ -199,8 +206,12 @@
           // likewise hand over from the precursor's atmospheric flare
           atmo.material.uniforms.impactGlow.value = Math.max(pulse * 0.4 + melt * 0.1, 0.3 * Math.exp(-ft * 6));
 
-          // barely a pop — the daylit disc must not clip to white on contact
-          renderer.toneMappingExposure = THREE.MathUtils.lerp(1.05, 1.09, Math.min(1, pulse * 0.98)) * (0.94 + longGlow * 0.12);
+          // Contact flare: a lift that eases in over the first frames rather
+          // than stepping at t=12.4, and decays back to daylight instead of
+          // leaving the film permanently 6% darker the way the old constant
+          // 0.94 term did. The veil's dimming then takes it from there.
+          const flareUp = ease(clamp01(ft / 0.12));
+          expo *= 1 + (0.06 * longGlow + 0.038 * Math.min(1, pulse * 0.98)) * flareUp;
 
           // soft impact jolt — enough punch without shoving Earth out of frame
           const shakeAmt = reduceMotion ? 0 : (ft < 1.8 ? (1 - ft / 1.8) * 0.048 : (ft < 5 ? (1 - (ft - 1.8) / 3.2) * 0.014 : 0));
@@ -460,7 +471,13 @@
           sun.intensity = 1.85 * light;
           ambient.intensity = 0.03 + 0.13 * light;
           hemi.intensity = 0.06 + 0.26 * light;
-          renderer.toneMappingExposure = THREE.MathUtils.lerp(1.05, 0.34, ease(dim));
+          // a factor, not a value: it continues the contact arc instead of
+          // resetting to daylight the moment the winter block takes over
+          expo *= THREE.MathUtils.lerp(1.0, 0.324, ease(dim));
+          // white balance rides the same optical depth as the dimming
+          sun.color.copy(sunTint(dim));
+          hemi.color.copy(SKY_DAY).lerp(SKY_MURK, Math.min(1, dim * 1.6)).lerp(SKY_DEAD, clamp01((dim - 0.62) / 0.38));
+          ambient.color.copy(AMB_DAY).lerp(AMB_DEAD, dim);
           atmo.material.uniforms.glowColor.value.setHex(0x6eb8ff).lerp(veil, dim * 0.9);
           atmo.material.uniforms.intensity.value = THREE.MathUtils.lerp(1.0, 0.25, dim);
           controls.autoRotateSpeed = 0.18 + dim * 0.12;
@@ -481,7 +498,9 @@
           sun.intensity = 1.85;
           ambient.intensity = 0.16;
           hemi.intensity = 0.32;
-          if (t < 12.4) renderer.toneMappingExposure = 1.05;
+          sun.color.copy(SUN_DAY);
+          hemi.color.copy(SKY_DAY);
+          ambient.color.copy(AMB_DAY);
           atmo.material.uniforms.glowColor.value.set(0x6eb8ff);
           atmo.material.uniforms.intensity.value = 1.0;
           controls.autoRotateSpeed = 0.18;
@@ -497,8 +516,10 @@
         hud.progress.style.width = (total * 100).toFixed(1) + '%';
 
         if (onGround) {
-          // ground scene owns the frame now — skip the globe camera rig
-          updateGround(t);
+          // ground scene owns the frame now — skip the globe camera rig. It is
+          // handed the exposure the globe beat ended on so it can open up out
+          // of it rather than cutting to a different one.
+          updateGround(t, expo);
           renderer.render(groundScene, groundCam);
           requestAnimationFrame(tick);
           return;
@@ -515,6 +536,7 @@
         }
         controls.update();
         if (t >= 12.4) pinFxToImpact(hit);
+        renderer.toneMappingExposure = expo;
         renderer.render(scene, camera);
         requestAnimationFrame(tick);
       }

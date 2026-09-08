@@ -52,6 +52,25 @@
         return _melt.copy(MELT_RED).lerp(MELT_BLACK, ease((u - 0.75) / 0.25));
       }
 
+      // White balance. The light reaching the ground is filtered through more
+      // and more soot, so direct sun reddens the way it does through a wildfire
+      // plume, and the sky term goes from a clear blue bounce to brown murk.
+      // Driven by the same optical depth the winter dimming uses, so colour and
+      // brightness are two views of one quantity rather than two timelines.
+      const SUN_DAY = new THREE.Color(0xfff2d8);
+      const SUN_DUSK = new THREE.Color(0xff9a4a);
+      const SUN_EMBER = new THREE.Color(0x7a2c10);
+      const SKY_DAY = new THREE.Color(0x1a3a6a);
+      const SKY_MURK = new THREE.Color(0x4a3524);
+      const SKY_DEAD = new THREE.Color(0x1c120c);
+      const AMB_DAY = new THREE.Color(0x0c1224);
+      const AMB_DEAD = new THREE.Color(0x1a1008);
+      const _sunC = new THREE.Color();
+      function sunTint(dim) {
+        if (dim < 0.5) return _sunC.copy(SUN_DAY).lerp(SUN_DUSK, ease(dim / 0.5));
+        return _sunC.copy(SUN_DUSK).lerp(SUN_EMBER, ease((dim - 0.5) / 0.5));
+      }
+
       const camModeEl = document.getElementById('cam-mode');
       const camLockEl = document.getElementById('cam-lock');
 

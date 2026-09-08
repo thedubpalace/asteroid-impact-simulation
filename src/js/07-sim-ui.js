@@ -71,9 +71,11 @@
         hud.flash.style.opacity = 0;
         renderer.toneMappingExposure = 1.05;
         sun.intensity = 1.85;
+        sun.color.copy(SUN_DAY);
         ambient.intensity = 0.16;
+        ambient.color.copy(AMB_DAY);
         hemi.intensity = 0.32;
-        renderer.toneMappingExposure = 1.05;
+        hemi.color.copy(SKY_DAY);
         atmo.material.uniforms.glowColor.value.set(0x6eb8ff);
         atmo.material.uniforms.intensity.value = 1.0;
         fogLayer.material.opacity = 0.3;

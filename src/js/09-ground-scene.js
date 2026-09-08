@@ -723,7 +723,7 @@
         dinoMat.color.copy(DINO_LIVE);
       }
 
-      function updateGround(t) {
+      function updateGround(t, expoIn) {
         const pe = clamp01((t - EXT_T0) / (EXT_T1 - EXT_T0));
         const dt = 1 / 60;
         // Ground-level view of the same thermal pulse the globe beat shows
@@ -776,7 +776,14 @@
         groundHemi.color.setHex(0x5e5548).lerp(BROIL_LIGHT, broilG * 0.85);
         emberBand.material.opacity = 0.3 * (1 - clamp01(pe / 0.72)) + broilG * 0.5;
         mistGlow.material.opacity = 0.85 * (1 - clamp01(pe / 0.45)); // last light, snuffed by ~pe 0.45
-        renderer.toneMappingExposure = THREE.MathUtils.lerp(1.1, 0.46, dk);
+        // Continue the film's exposure rather than cutting to a new one. The
+        // globe beat ends almost black; the eye (and the camera) opens up as
+        // the frame comes out of the veil, and from there the pall closes it
+        // down again. The ramp is short and sits under the veil's fade-out.
+        const cut = ease(clamp01(pe / 0.06));
+        renderer.toneMappingExposure = THREE.MathUtils.lerp(
+          expoIn === undefined ? 1.1 : expoIn,
+          THREE.MathUtils.lerp(1.1, 0.46, dk), cut);
 
         // smoke banks: several clumps drifting across, thickening from a thin
         // haze at the start to a heavy pall by mid-phase
