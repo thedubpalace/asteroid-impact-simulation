@@ -3145,6 +3145,50 @@
       const trunkMat = new THREE.MeshStandardMaterial({ map: barkTex, color: 0x2a2016, roughness: 1, metalness: 0, fog: true });
       const canopyMat = new THREE.MeshStandardMaterial({ map: canopyTex, color: 0x1b2814, roughness: 1, metalness: 0, fog: true });
 
+      // How the surface dies. The thermal pulse scorches the crowns within
+      // hours; the needles then drop and the stand goes to bare poles. Ash
+      // settles pale over everything, and the sulphate aerosol from the
+      // vaporised anhydrite falls out as acid rain — a sickly yellow cast
+      // through the middle of the phase, before the murk drains to grey.
+      const CANOPY_LIVE = new THREE.Color(0x1b2814);
+      const CANOPY_SCORCH = new THREE.Color(0x3d2411);
+      const CANOPY_BARE = new THREE.Color(0x241d16);
+      const FERN_LIVE = new THREE.Color(0x6a7250);
+      const GRASS_LIVE = new THREE.Color(0x8a8256);
+      const DEAD_BROWN = new THREE.Color(0x4a3a1e);
+      const ASH_PALE = new THREE.Color(0xb3ada2);
+      const ACID_HAZE = new THREE.Color(0x6e6a3a);
+      const RAIN_COLD = new THREE.Color(0xadbdcd);
+      const RAIN_ACID = new THREE.Color(0xc9c69c);
+      const DINO_LIVE = new THREE.Color(0xc8b9a8);
+      const DINO_DEAD = new THREE.Color(0x8b8990);
+
+      // Canopy loss is geometry, not just colour: the crowns physically thin
+      // to bare spires as the needles come off. Rewriting 280 instance
+      // matrices costs nothing, so do it properly rather than fading a colour.
+      let canopyInst = null;
+      const _cq = new THREE.Quaternion(), _ce = new THREE.Euler();
+      const _cp = new THREE.Vector3(), _cs = new THREE.Vector3(), _cm = new THREE.Matrix4();
+      function setCanopy(fall) {
+        if (!canopyInst) return;
+        const keep = 1 - fall;
+        for (let i = 0; i < treePlace.length; i++) {
+          const t = treePlace[i];
+          _ce.set(t.lean * 0.4, t.ry, t.lean);
+          _cq.setFromEuler(_ce);
+          _cp.set(t.px, 0, t.pz);
+          const cs = t.dead ? t.sc * 0.5 : t.sc;
+          // shrink across the trunk, not down it — a defoliated conifer keeps
+          // its height and loses its width
+          const csXZ = cs * (t.broad ? 1.55 : 1) * (0.28 + keep * 0.72);
+          const csY = cs * (t.broad ? 0.62 : 1) * (0.82 + keep * 0.18);
+          _cs.set(csXZ, csY, csXZ);
+          _cm.compose(_cp, _cq, _cs);
+          canopyInst.setMatrixAt(i, _cm);
+        }
+        canopyInst.instanceMatrix.needsUpdate = true;
+      }
+
       new THREE.GLTFLoader().load('models/tree.glb', (gltf) => {
         gltf.scene.updateWorldMatrix(true, true);
         const src = [];
@@ -3213,6 +3257,7 @@
         if (trunkIM.instanceColor) trunkIM.instanceColor.needsUpdate = true;
         if (canopyIM.instanceColor) canopyIM.instanceColor.needsUpdate = true;
         groundScene.add(trunkIM, canopyIM);
+        canopyInst = canopyIM;
       });
 
       // ---- Undergrowth: ferns, cycads/tree-ferns, grass tufts -------------
@@ -3397,8 +3442,10 @@
           x: (Math.random() - 0.5) * 130, y: Math.random() * 46,
           z: -Math.random() * 105 - 2, v: 0.9 + Math.random() * 1.8, sw: Math.random() * 6.28,
           // fine ash rides the wind rather than all falling straight down —
-          // per-particle drift so the fall reads as turbulent, not uniform
-          drift: (Math.random() - 0.5) * 0.5 + 0.35
+          // per-particle drift so the fall reads as turbulent, not uniform.
+          // Weighted well above the old 0.35: at these fall speeds that was a
+          // ~10 degree lean, which read as vertical. This is a real slant.
+          drift: (Math.random() - 0.5) * 0.9 + 1.6
         };
         ashState.push(a);
         ashPos[i * 3] = a.x; ashPos[i * 3 + 1] = a.y; ashPos[i * 3 + 2] = a.z;
@@ -3618,6 +3665,13 @@
         groundScene.fog.color.set(0x7a7062);
         groundScene.background.set(0x7a7062);
         mistGlow.material.opacity = 0.85;
+        setCanopy(0);
+        canopyMat.color.copy(CANOPY_LIVE);
+        fernMat.color.copy(FERN_LIVE);
+        grassMat.color.copy(GRASS_LIVE);
+        forestFloor.material.color.setRGB(1, 1, 1);
+        rain.material.color.copy(RAIN_COLD);
+        dinoMat.color.copy(DINO_LIVE);
       }
 
       function updateGround(t) {
@@ -3628,6 +3682,28 @@
         // which is what the fire rain *is*. It burns out over the first
         // quarter of the phase and hands the frame to the cold rain and ash.
         const broilG = thermalPulse(pe / 0.34);
+
+        // Ash keeps falling all phase but banks up fastest early, so the
+        // ground pales long before the light has finished going.
+        const ashLoad = ease(clamp01((pe - 0.05) / 0.55));
+        // Acid rain peaks weeks in and then washes out: a sickly sulphur cast
+        // that rises through the first third and is gone by the last.
+        const acid = pe < 0.28
+          ? ease(clamp01((pe - 0.1) / 0.18))
+          : 1 - ease(clamp01((pe - 0.28) / 0.4));
+        // Scorched crowns first, then the needles drop and the stand goes bare.
+        const scorched = ease(clamp01(pe / 0.12));
+        const fall = ease(clamp01((pe - 0.1) / 0.42));
+        setCanopy(fall);
+        canopyMat.color.copy(CANOPY_LIVE).lerp(CANOPY_SCORCH, scorched)
+          .lerp(CANOPY_BARE, fall).lerp(ASH_PALE, ashLoad * 0.22);
+        // ferns and ground cover die faster than the trees above them
+        const wither = ease(clamp01((pe - 0.04) / 0.3));
+        fernMat.color.copy(FERN_LIVE).lerp(DEAD_BROWN, wither).lerp(ASH_PALE, ashLoad * 0.4);
+        grassMat.color.copy(GRASS_LIVE).lerp(DEAD_BROWN, wither).lerp(ASH_PALE, ashLoad * 0.45);
+        // ash banking up on the forest floor — the one thing getting lighter
+        forestFloor.material.color.setRGB(1, 1, 1).lerp(ASH_PALE, ashLoad * 0.85);
+        rain.material.color.copy(RAIN_COLD).lerp(RAIN_ACID, acid * 0.8);
 
         // starts lit (some daylight still forces through), then the smoke pall
         // thickens across the phase — but it never reaches full black: the shot
@@ -3640,6 +3716,7 @@
         groundScene.fog.density = THREE.MathUtils.lerp(0.026, 0.07, ease(pe));
         const murk = new THREE.Color(0x7a7062).lerp(new THREE.Color(0x0d0c0a), dk);
         murk.lerp(BROIL_SKY, broilG * 0.8);
+        murk.lerp(ACID_HAZE, acid * 0.3 * (1 - broilG));
         groundScene.fog.color.copy(murk);
         groundScene.background.copy(murk);
         const sd = 1 - dk * 0.9;
@@ -3723,16 +3800,24 @@
         // the animal: idle in the rain, then it topples (Death clip scrubbed
         // over pe 0.30-0.52 so the collapse plays while there's still light to
         // read it), lies dead through the dark, then sinks and fades out
+        // The animal fails before it falls: its breathing shallows out and the
+        // colour drains out of its hide, and then the ash greys over the body.
+        const vigour = 1 - ease(clamp01((pe - 0.08) / 0.22));
+        dinoMat.color.copy(DINO_LIVE)
+          .lerp(DINO_DEAD, ease(clamp01((pe - 0.1) / 0.34)))
+          .lerp(ASH_PALE, ashLoad * 0.3);
         if (dinoMixer) {
           if (pe < 0.3) {
             if (dinoDeath.isRunning()) dinoDeath.stop();
             if (!dinoIdle.isRunning()) dinoIdle.reset().play();
-            dinoIdle.setEffectiveTimeScale(1.15);
+            // breathing goes shallow and slow before the collapse: the idle
+            // clip winds down and the body's own rise and fall winds down with it
+            dinoIdle.setEffectiveTimeScale(0.42 + vigour * 0.73);
             dinoMixer.update(dt);
             // the idle clip carries the head/tail/leg motion now that skinning
             // works; keep the group layer light so the body doesn't wobble as
             // one rigid block on top of it
-            const br = reduceMotion ? 0 : 1;
+            const br = reduceMotion ? 0 : (0.22 + vigour * 0.78);
             dino.position.x = 0.5 + br * Math.sin(t * 0.45) * 0.06;
             dino.position.y = br * (0.5 + 0.5 * Math.sin(t * 1.5)) * 0.05; // breathe up only, never dip below ground
             dino.rotation.set(
