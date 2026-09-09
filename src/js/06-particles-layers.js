@@ -310,14 +310,25 @@
       function spawnBurst(sys, origin, normal, n, speed, spread, life, palette, jet, ringR) {
         let spawned = 0;
         const basis = (jet === 'curtain' || jet === 'plume') ? impactBasis(origin) : null;
-        for (let i = 0; i < sys.count && spawned < n; i++) {
+        function place(i) {
           const pr = sys.parts[i];
-          if (pr.life > 0) continue;
           let scl = 0.55 + Math.random() * 0.5;
+          let lifeMul = 1;
           if (basis) {
             const az = Math.random() * Math.PI * 2;
             const radial = basis.tangent.clone().multiplyScalar(Math.cos(az)).addScaledVector(basis.bitan, Math.sin(az));
-            const rr = (ringR || 0) * (jet === 'curtain' ? 0.6 + Math.random() * 0.4 : Math.sqrt(Math.random()) * 0.8);
+            // One continuous launch-speed spectrum per plume burst. Each call
+            // used to fire a narrow band (x0.55..x1.30 of `speed`), so the two
+            // or three calls a system made at contact each settled into their
+            // own altitude shell with a 4-14x density void in between, and the
+            // column read as a glowing cap floating free of a darker stump.
+            // A power law over ~9x covers every band from vent to top: mostly
+            // slow material low down, a thin fast core launched off the axis
+            // that lives longer because it has further to go.
+            const fast = jet === 'plume' ? Math.pow(Math.random(), 1.7) : 0;
+            const rr = (ringR || 0) * (jet === 'curtain'
+              ? 0.6 + Math.random() * 0.4
+              : Math.sqrt(Math.random()) * 0.8 * (1 - fast * 0.55));
             pr.pos.copy(origin).addScaledVector(radial, rr).addScaledVector(normal, 0.02 + Math.random() * 0.04);
             if (jet === 'curtain') {
               // size-sorted: a few big blocks, mostly fines small enough to
@@ -329,8 +340,10 @@
               pr.vel.copy(normal).multiplyScalar(Math.sin(el)).addScaledVector(radial, Math.cos(el));
               pr.vel.multiplyScalar(speed * (0.3 + (1 - big) * 0.9 + Math.random() * 0.25));
             } else {
-              pr.vel.copy(normal).multiplyScalar(speed * (0.55 + Math.random() * 0.75));
-              pr.vel.addScaledVector(radial, speed * Math.random() * spread);
+              pr.vel.copy(normal).multiplyScalar(speed * (0.3 + fast * 2.4));
+              // the slow skirt spreads widest; the fast core stays collimated
+              pr.vel.addScaledVector(radial, speed * Math.random() * spread * (1 - fast * 0.45));
+              lifeMul = 1 + fast * 0.7;
             }
             pr.vel.x += (Math.random() - 0.5) * speed * 0.08;
             pr.vel.y += (Math.random() - 0.5) * speed * 0.08;
@@ -351,7 +364,7 @@
             pr.vel.z += (Math.random() - 0.5) * speed * 0.18;
           }
           sys.k[i] = scl;
-          pr.max = life * (0.5 + Math.random() * 0.9);
+          pr.max = life * (0.5 + Math.random() * 0.9) * lifeMul;
           pr.life = pr.max;
           pr.spin = Math.random() * Math.PI * 2;
           pr.grow = 0.7 + Math.random() * 0.9;
@@ -362,6 +375,24 @@
           sys.c[i * 3 + 2] = Math.max(0, col[2] + j * 0.7);
           sys.s[i] = 1;
           spawned++;
+        }
+        for (let i = 0; i < sys.count && spawned < n; i++) {
+          if (sys.parts[i].life <= 0) place(i);
+        }
+        // Free slots first; if the pool is saturated, recycle whatever has the
+        // least life left instead of silently dropping the spawn. A column that
+        // has reached its buoyancy cap parks tens of seconds of long-lived
+        // material in every slot the system owns, so the sustained vent stopped
+        // spawning entirely and the stem under the cap emptied out — rebuilding
+        // the same detached cap this pass exists to remove, from the other end.
+        while (spawned < n) {
+          let worst = -1, worstLife = Infinity;
+          for (let i = 0; i < sys.count; i++) {
+            const l = sys.parts[i].life;
+            if (l < worstLife) { worstLife = l; worst = i; }
+          }
+          if (worst < 0) break;
+          place(worst);
         }
         sys.g.attributes.color.needsUpdate = true;
         sys.g.attributes.aSize.needsUpdate = true;
@@ -378,7 +409,11 @@
       // rest of the frame crawled) and frame rate stops changing the arcs
       // settle: seconds of life left once a particle touches the floor (rocks
       // on the ground fade out instead of lying there for their full life)
-      function stepDebris(sys, dt, drag, gravity, floorR, rise, swirl, settle) {
+      // capH: height above floorR at which the gas reaches neutral buoyancy —
+      // lift dies out through that band and turns into lateral outflow, so the
+      // column spreads into a cap the stem below keeps feeding. Without one,
+      // the only thing setting a particle's ceiling was its launch speed.
+      function stepDebris(sys, dt, drag, gravity, floorR, rise, swirl, settle, capH) {
         const fr = dt * 60;
         const dragF = Math.pow(drag, fr);
         for (let i = 0; i < sys.count; i++) {
@@ -400,7 +435,15 @@
           const plen = _n.length();
           if (plen > 1e-6) _n.multiplyScalar(1 / plen);
           if (gravity) pr.vel.addScaledVector(_n, gravity * fr);
-          if (rise) pr.vel.addScaledVector(_n, rise * (1 - age * 0.65) * fr);
+          // 0 below the buoyancy band, 1 above it
+          const capB = capH ? clamp01((plen - floorR - capH * 0.55) / (capH * 0.6)) : 0;
+          if (rise) pr.vel.addScaledVector(_n, rise * (1 - age * 0.65) * (1 - capB) * fr);
+          if (capB > 0) {
+            // bleed off what upward momentum is left rather than letting the
+            // fast core coast straight through the cap and detach above it
+            const vn = pr.vel.dot(_n);
+            if (vn > 0) pr.vel.addScaledVector(_n, -vn * Math.min(0.85, 0.055 * capB * fr));
+          }
           if (swirl) {
             // turbulent widening: a per-particle random horizontal direction
             // (spin is random) — the old single-axis push along n x up flung
@@ -408,8 +451,10 @@
             _side.crossVectors(_n, _up).normalize();
             _fwd.crossVectors(_n, _side);
             const ph = pr.spin * 40 + age * 8;
-            pr.vel.addScaledVector(_side, Math.sin(ph) * swirl * fr);
-            pr.vel.addScaledVector(_fwd, Math.cos(ph) * swirl * fr);
+            // the lift that stops at the cap has to go somewhere: outward
+            const sw = swirl * (1 + capB * 6.0);
+            pr.vel.addScaledVector(_side, Math.sin(ph) * sw * fr);
+            pr.vel.addScaledVector(_fwd, Math.cos(ph) * sw * fr);
           }
           pr.pos.addScaledVector(pr.vel, dt);
           if (floorR) {

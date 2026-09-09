@@ -261,14 +261,19 @@
             // vapour fireball is born low over the pit and *rises* (velocity +
             // buoyant lift in stepDebris) rather than appearing pre-lofted.
             spawnBurst(ejecta, impactPoint, impactNormal, 220, 0.46, 30, 5.5, rockPal, 'curtain', rimR * 0.6);
-            spawnBurst(fireball, impactPoint, impactNormal, 480, 0.14, 0.55, 5.0, firePal, 'plume', rimR * 1.4);
-            // the ash/steam column also starts low and climbs behind the fireball
-            spawnBurst(smoke, impactPoint, impactNormal, 1400, 0.1, 0.7, 22, smokePal, 'plume', rimR * 1.6);
-            spawnBurst(smoke, impactPoint, impactNormal, 1100, 0.06, 1.1, 26, smokePal, 'plume', rimR * 2.4);
+            // One plume burst per system, not two or three. Splitting a system
+            // across several calls gave it that many narrow launch-speed bands,
+            // and a few seconds later each band was its own altitude shell with
+            // a hole between them. spawnBurst now spreads one call across the
+            // whole speed range, so a single call fills the column top to
+            // bottom. The fireball is launched *slower* than the ash it lights:
+            // the vapour is what stays low over the melt that keeps reheating
+            // it, while the cooling ash is what climbs past it.
+            spawnBurst(fireball, impactPoint, impactNormal, 480, 0.055, 0.55, 5.0, firePal, 'plume', rimR * 1.4);
+            spawnBurst(smoke, impactPoint, impactNormal, 2500, 0.062, 0.9, 24, smokePal, 'plume', rimR * 2.0);
             spawnBurst(smoke, impactPoint, impactNormal, 760, 0.07, 2.15, 28, smokePal, false);
-            spawnBurst(soot, impactPoint, impactNormal, 1100, 0.08, 0.9, 24, sootPal, 'plume', rimR * 1.8);
-            spawnBurst(soot, impactPoint, impactNormal, 780, 0.05, 1.4, 28, sootPal, 'plume', rimR * 2.8);
-            spawnBurst(mistFine, impactPoint, impactNormal, 860, 0.07, 0.9, 20, mistPal, 'plume', rimR * 2.0);
+            spawnBurst(soot, impactPoint, impactNormal, 1880, 0.052, 1.15, 26, sootPal, 'plume', rimR * 2.2);
+            spawnBurst(mistFine, impactPoint, impactNormal, 860, 0.058, 0.9, 20, mistPal, 'plume', rimR * 2.0);
             spawnBurst(mistFine, impactPoint, impactNormal, 620, 0.06, 2.35, 24, mistPal, false);
           }
           // Ejecta curtain: an inverted cone launched off the rim as it moves
@@ -278,10 +283,14 @@
             const ex = 1 - ft / 2.0;
             spawnBurst(ejecta, impactPoint, impactNormal, 6 + Math.round(26 * ex), 0.26 + ex * 0.24, 22, 5.5, rockPal, 'curtain', rimR * 0.95);
           }
-          // fireball keeps feeding off the melt for a couple of seconds, then
-          // the column above it is ash only
-          if (ft < 2.4 && Math.random() < 0.75) {
-            spawnBurst(fireball, impactPoint, impactNormal, 10, 0.12, 0.4, 4.5, firePal, 'plume', rimR * 0.9);
+          // The fireball feeds off the melt for as long as the melt is hot,
+          // fading out with it. Cutting this dead at ft=2.4 meant that once
+          // the contact burst had lofted there was nothing hot left anywhere
+          // near the vent — the glow was all up in the risen shell, exactly
+          // backwards, and the band under it emptied out.
+          const fireFeed = Math.exp(-ft / 3.4);
+          if (ft < 13 && Math.random() < 0.8 * fireFeed * dt * 60) {
+            spawnBurst(fireball, impactPoint, impactNormal, 4 + Math.round(9 * fireFeed), 0.05, 0.45, 4.5, firePal, 'plume', rimR * 0.9);
           }
           // Melt-sheet cooling. Radiated power falls far faster than colour
           // does, so the sheet loses most of its brightness early and then
@@ -336,7 +345,11 @@
           // frame* — every slot that freed up was instantly refilled somewhere
           // in a 0.4-unit cloud, which read as dots over half the hemisphere.
           // Now a modest per-second trickle, born low and rising like the rest.
-          const feed = (t < 14.5 ? 1.0 : (t < 18 ? 0.7 : 0.4)) * dt * 60;
+          // Smooth taper rather than the old 1.0 / 0.7 / 0.4 stair at t=14.5
+          // and t=18: each step dropped the supply for long enough to leave a
+          // gap between the material already lofted and the material still
+          // low, which is half of what split the column into shells.
+          const feed = (0.34 + 0.66 * Math.exp(-(t - 12.42) / 4.2)) * dt * 60;
           const vent = CRATER_R * 1.3;
           if (Math.random() < 0.6 * feed) {
             spawnBurst(smoke, impactPoint, impactNormal, 6, 0.05 + Math.random() * 0.05, 0.8, 24, smokePal, 'plume', vent);
@@ -359,10 +372,15 @@
         // ~13 units/s and sat 70+ radii out by the winter beat. Buoyant lift
         // now tops out near 0.04 units/s, so the plume climbs ~0.5 units
         // (a few crater diameters) over the shock beat and stays over the pit.
-        stepDebris(smoke, dt, 0.99, -0.00015, EARTH_R + 0.04, 0.0006, 0.0004);
-        stepDebris(soot, dt, 0.99, -0.0001, EARTH_R + 0.05, 0.00045, 0.0004);
-        stepDebris(mistFine, dt, 0.99, 0, EARTH_R + 0.04, 0.0005, 0.0004);
-        stepDebris(fireball, dt, 0.985, 0, EARTH_R + 0.03, 0.0008, 0.0003);
+        // capH: each gas reaches neutral buoyancy at its own height and spreads
+        // there instead of coasting on, so the cap is something the column
+        // builds rather than a leftover of how fast a burst happened to launch.
+        // The fireball's is lowest — vapour that has radiated its heat away has
+        // no buoyancy left — which puts the glow at the base and the ash above.
+        stepDebris(smoke, dt, 0.99, -0.00015, EARTH_R + 0.04, 0.0006, 0.0004, 0, 0.34);
+        stepDebris(soot, dt, 0.99, -0.0001, EARTH_R + 0.05, 0.00045, 0.0004, 0, 0.30);
+        stepDebris(mistFine, dt, 0.99, 0, EARTH_R + 0.04, 0.0005, 0.0004, 0, 0.32);
+        stepDebris(fireball, dt, 0.985, 0, EARTH_R + 0.03, 0.0004, 0.0003, 0, 0.15);
 
         const after = clamp01((t - 12.4) / 22);
         ejecta.mat.uniforms.uOpacity.value = t > 12.4 ? THREE.MathUtils.lerp(1.0, 0.14, clamp01((t - 12.4) / 7.2)) : 0;
