@@ -292,7 +292,7 @@
       </div>
       <div class="panel-body" id="detail-pane-body">
         <div class="row"><span class="label">Phase</span><span class="value hot" id="m-phase">Approach</span></div>
-        <div class="row"><span class="label">Speed</span><span class="value" id="m-speed">20.0 km/s</span></div>
+        <div class="row"><span class="label">Speed</span><span class="value" id="m-speed">20.4 km/s</span></div>
         <div class="row"><span class="label">Diameter</span><span class="value" id="m-size">10 km</span></div>
         <div class="row"><span class="label">Energy</span><span class="value" id="m-energy">1×10⁸ Mt</span></div>
         <div class="row"><span class="label">Altitude</span><span class="value" id="m-alt">1.2×10⁶ km</span></div>
@@ -2158,6 +2158,7 @@
             uGrow: { value: softGrow ? 1.0 : 0.0 },
             uGrowMul: { value: typeof softGrow === 'number' ? softGrow : 1.0 },
             uCool: { value: 0.0 },
+            uHot: { value: 0.0 },
             uProj: { value: 1000.0 }
           },
           vertexShader: [
@@ -2189,7 +2190,7 @@
             '}'
           ].join('\n'),
           fragmentShader: [
-            'uniform sampler2D map; uniform float uOpacity; uniform float uGrow; uniform float uCool;',
+            'uniform sampler2D map; uniform float uOpacity; uniform float uGrow; uniform float uCool; uniform float uHot;',
             'varying vec3 vColor; varying float vLife;',
             'void main(){',
             '  vec2 pc=gl_PointCoord-vec2(0.5);',
@@ -2207,6 +2208,12 @@
             '  // white-yellow -> orange -> dull red -> gone, handing over to the ash',
             '  float cool=uCool*smoothstep(0.03,0.72,age);',
             '  vec3 col=mix(vColor, vColor*vec3(0.55,0.16,0.04), cool);',
+            '  // Rock leaves the crater incandescent and radiates down the',
+            '  // blackbody ramp along its arc. Unlike vapour it does not thin',
+            '  // out as it cools — the chunk is still there — so this rides on',
+            '  // top of the albedo and leaves the alpha alone.',
+            '  float hot=uHot*pow(1.0-smoothstep(0.0,0.5,age), 1.7);',
+            '  col+=mix(vec3(1.0,0.34,0.05), vec3(1.0,0.88,0.62), hot)*hot*1.5;',
             '  float a=soft*uOpacity*fade*(1.0-cool*0.85);',
             '  if(a<0.012) discard;',
             '  gl_FragColor=vec4(col,a);',
@@ -2529,6 +2536,9 @@
       let flashPeak = 0;
       let lastPhase = '';
       let debrisBurst = 0;
+      // launch axis of the vapour column — tilted downrange at contact, since
+      // Chicxulub came in oblique. Null until then; falls back to the vertical.
+      let plumeAxis = null;
       let lastDebris = 0;
       let simTime = 0;
       let grainClock = 0;
@@ -3923,10 +3933,13 @@
         if (!reduceMotion && now - grainClock > 140) { paintGrain(); grainClock = now; }
 
         if (!playing) {
-          earthGroup.rotation.y += 0.00022;
-          fogLayer.rotation.y += 0.0001;
-          clouds.rotation.y += 0.0002;
-          highClouds.rotation.y -= 0.00008;
+          // per-second rates, not per-frame: the idle globe used to spin
+          // proportionally faster the higher the display's refresh rate
+          const idleFr = realDt * 60;
+          earthGroup.rotation.y += 0.00022 * idleFr;
+          fogLayer.rotation.y += 0.0001 * idleFr;
+          clouds.rotation.y += 0.0002 * idleFr;
+          highClouds.rotation.y -= 0.00008 * idleFr;
           nights.material.opacity = 0.2 + 0.7 * (0.5 + 0.5 * Math.sin(earthGroup.rotation.y + 0.8));
           atmo.material.uniforms.sunDir.value.copy(sun.position).normalize();
           // evaluate hit AFTER rotation so camera tracks the site, not last frame's site
@@ -3976,12 +3989,19 @@
         const onGround = t >= 33.95;
 
         // rotate Earth first, then derive a single shared impact site for camera/rock/fx
-        earthGroup.rotation.y += 0.00055;
-        fogLayer.rotation.y += 0.00018;
-        clouds.rotation.y += 0.00042;
-        highClouds.rotation.y -= 0.00018;
-        asteroid.rotation.x += 0.03;
-        asteroid.rotation.y += 0.02;
+        // Scaled by the sim's own dt, so the planet, its cloud decks and the
+        // tumbling bolide all slow down with everything else through the 0.22x
+        // window around contact. As per-frame increments they kept turning at
+        // full rate while the impact itself crawled — and the whole spin was
+        // frame-rate dependent on top of that. Same defect the particle
+        // systems had before their dt-scaling pass; the transforms were missed.
+        const spinFr = dt * 60;
+        earthGroup.rotation.y += 0.00055 * spinFr;
+        fogLayer.rotation.y += 0.00018 * spinFr;
+        clouds.rotation.y += 0.00042 * spinFr;
+        highClouds.rotation.y -= 0.00018 * spinFr;
+        asteroid.rotation.x += 0.03 * spinFr;
+        asteroid.rotation.y += 0.02 * spinFr;
         const hit = worldImpact();
 
         const approachU = clamp01(t / 12.4);
@@ -4052,7 +4072,16 @@
         // thousandth of the shot. The final 2.5 s is the atmosphere: 120 km.
         const altKm = air > 0 ? THREE.MathUtils.lerp(120, 0, air)
           : THREE.MathUtils.lerp(1.2e6, 120, clamp01(t / 9.9));
-        const spd = approachU >= 1 ? 0 : THREE.MathUtils.lerp(20.4, 19.6, approachU);
+        // A body falling into the well speeds up: v = sqrt(v_inf^2 + 2GM/r).
+        // The readout used to run *down* 20.4 -> 19.6 km/s across the approach,
+        // which is backwards; anchoring 20.4 km/s at the 1.2e6 km start puts
+        // contact at ~23.3, the accepted Chicxulub figure. It stays flat over
+        // the last 120 km too: crossing the whole atmosphere a 10 km bolide
+        // sweeps up only ~5e-4 of its own mass in air, so it arrives having
+        // shed well under 1% of its speed. Only the ground stops it.
+        const GM = 3.986e5;
+        const vInf2 = 20.4 * 20.4 - 2 * GM / (6371 + 1.2e6);
+        const spd = approachU >= 1 ? 0 : Math.sqrt(vInf2 + 2 * GM / (6371 + altKm));
         hud.speed.textContent = spd.toFixed(1) + ' km/s';
         hud.alt.textContent = approachU >= 1 ? '0 km' : formatAlt(altKm);
 
@@ -4175,6 +4204,13 @@
             const downL = upWorld.negate().applyEuler(inv);
             downL.addScaledVector(impactNormal, -downL.dot(impactNormal)).normalize();
             scorch.material.uniforms.downDir.value.copy(downL);
+            // An oblique impact throws its vapour plume downrange, not straight
+            // up. The ejecta rays already lean that way (downDir, above), but
+            // the column over them was rising along the local vertical as if
+            // the rock had come straight down. Only the launch momentum tilts:
+            // buoyancy in stepDebris still works along true up, so the column
+            // leans off the pit and straightens as it climbs.
+            plumeAxis = impactNormal.clone().addScaledVector(downL, 0.34).normalize();
             // Contact energy partition: the earliest ejecta is the fastest —
             // shocked fines jetted steeply off the contact point — while the
             // vapour fireball is born low over the pit and *rises* (velocity +
@@ -4188,12 +4224,12 @@
             // bottom. The fireball is launched *slower* than the ash it lights:
             // the vapour is what stays low over the melt that keeps reheating
             // it, while the cooling ash is what climbs past it.
-            spawnBurst(fireball, impactPoint, impactNormal, 480, 0.055, 0.55, 5.0, firePal, 'plume', rimR * 1.4);
-            spawnBurst(smoke, impactPoint, impactNormal, 2500, 0.062, 0.9, 24, smokePal, 'plume', rimR * 2.0);
-            spawnBurst(smoke, impactPoint, impactNormal, 760, 0.07, 2.15, 28, smokePal, false);
-            spawnBurst(soot, impactPoint, impactNormal, 1880, 0.052, 1.15, 26, sootPal, 'plume', rimR * 2.2);
-            spawnBurst(mistFine, impactPoint, impactNormal, 860, 0.058, 0.9, 20, mistPal, 'plume', rimR * 2.0);
-            spawnBurst(mistFine, impactPoint, impactNormal, 620, 0.06, 2.35, 24, mistPal, false);
+            spawnBurst(fireball, impactPoint, plumeAxis, 480, 0.055, 0.55, 5.0, firePal, 'plume', rimR * 1.4);
+            spawnBurst(smoke, impactPoint, plumeAxis, 2500, 0.062, 0.9, 24, smokePal, 'plume', rimR * 2.0);
+            spawnBurst(smoke, impactPoint, plumeAxis, 760, 0.07, 2.15, 28, smokePal, false);
+            spawnBurst(soot, impactPoint, plumeAxis, 1880, 0.052, 1.15, 26, sootPal, 'plume', rimR * 2.2);
+            spawnBurst(mistFine, impactPoint, plumeAxis, 860, 0.058, 0.9, 20, mistPal, 'plume', rimR * 2.0);
+            spawnBurst(mistFine, impactPoint, plumeAxis, 620, 0.06, 2.35, 24, mistPal, false);
           }
           // Ejecta curtain: an inverted cone launched off the rim as it moves
           // outward, densest early and near the rim. Launch speed falls as the
@@ -4270,16 +4306,18 @@
           // low, which is half of what split the column into shells.
           const feed = (0.34 + 0.66 * Math.exp(-(t - 12.42) / 4.2)) * dt * 60;
           const vent = CRATER_R * 1.3;
+          // the vent keeps venting along the same tilted axis the burst used
+          const pax = plumeAxis || impactNormal;
           if (Math.random() < 0.6 * feed) {
-            spawnBurst(smoke, impactPoint, impactNormal, 6, 0.05 + Math.random() * 0.05, 0.8, 24, smokePal, 'plume', vent);
-            spawnBurst(mistFine, impactPoint, impactNormal, 4, 0.04 + Math.random() * 0.04, 0.9, 22, mistPal, 'plume', vent * 1.3);
-            spawnBurst(soot, impactPoint, impactNormal, 4, 0.04 + Math.random() * 0.05, 0.9, 26, sootPal, 'plume', vent);
+            spawnBurst(smoke, impactPoint, pax, 6, 0.05 + Math.random() * 0.05, 0.8, 24, smokePal, 'plume', vent);
+            spawnBurst(mistFine, impactPoint, pax, 4, 0.04 + Math.random() * 0.04, 0.9, 22, mistPal, 'plume', vent * 1.3);
+            spawnBurst(soot, impactPoint, pax, 4, 0.04 + Math.random() * 0.05, 0.9, 26, sootPal, 'plume', vent);
           }
           if (t > 14.8 && Math.random() < 0.3 * feed) {
             // a little loose haze shed off the top of the column
-            const high = impactPoint.clone().addScaledVector(impactNormal, 0.15 + Math.random() * 0.25);
-            spawnBurst(smoke, high, impactNormal, 3, 0.02 + Math.random() * 0.03, 1.95, 18, smokePal, false);
-            spawnBurst(mistFine, high, impactNormal, 3, 0.02 + Math.random() * 0.03, 2.15, 16, mistPal, false);
+            const high = impactPoint.clone().addScaledVector(pax, 0.15 + Math.random() * 0.25);
+            spawnBurst(smoke, high, pax, 3, 0.02 + Math.random() * 0.03, 1.95, 18, smokePal, false);
+            spawnBurst(mistFine, high, pax, 3, 0.02 + Math.random() * 0.03, 2.15, 16, mistPal, false);
           }
         }
 
@@ -4303,6 +4341,14 @@
 
         const after = clamp01((t - 12.4) / 22);
         ejecta.mat.uniforms.uOpacity.value = t > 12.4 ? THREE.MathUtils.lerp(1.0, 0.14, clamp01((t - 12.4) / 7.2)) : 0;
+        // The shot already had every *effect* of the thermal pulse — the broil
+        // shell, the global wildfires, the fire rain over the ground scene —
+        // without ever showing its cause. Rock thrown out of the crater at
+        // several km/s leaves it glowing, and it is that arc of incandescent
+        // ejecta re-entering downrange that does the broiling. It used to
+        // launch and land the same cold brown. The system dims as the melt it
+        // is torn from cools; each chunk fades on its own age on top of that.
+        ejecta.mat.uniforms.uHot.value = t > 12.4 ? Math.exp(-(t - 12.4) / 3.0) : 0;
         fireball.mat.uniforms.uOpacity.value = t > 12.4 ? 0.55 : 0;
         smoke.mat.uniforms.uOpacity.value = t > 12.4 ? THREE.MathUtils.lerp(0.7, 0.4, after) : 0;
         soot.mat.uniforms.uOpacity.value = t > 12.4 ? THREE.MathUtils.lerp(0.55, 0.32, after) : 0;

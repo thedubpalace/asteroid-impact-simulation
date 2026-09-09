@@ -107,6 +107,7 @@
             uGrow: { value: softGrow ? 1.0 : 0.0 },
             uGrowMul: { value: typeof softGrow === 'number' ? softGrow : 1.0 },
             uCool: { value: 0.0 },
+            uHot: { value: 0.0 },
             uProj: { value: 1000.0 }
           },
           vertexShader: [
@@ -138,7 +139,7 @@
             '}'
           ].join('\n'),
           fragmentShader: [
-            'uniform sampler2D map; uniform float uOpacity; uniform float uGrow; uniform float uCool;',
+            'uniform sampler2D map; uniform float uOpacity; uniform float uGrow; uniform float uCool; uniform float uHot;',
             'varying vec3 vColor; varying float vLife;',
             'void main(){',
             '  vec2 pc=gl_PointCoord-vec2(0.5);',
@@ -156,6 +157,12 @@
             '  // white-yellow -> orange -> dull red -> gone, handing over to the ash',
             '  float cool=uCool*smoothstep(0.03,0.72,age);',
             '  vec3 col=mix(vColor, vColor*vec3(0.55,0.16,0.04), cool);',
+            '  // Rock leaves the crater incandescent and radiates down the',
+            '  // blackbody ramp along its arc. Unlike vapour it does not thin',
+            '  // out as it cools — the chunk is still there — so this rides on',
+            '  // top of the albedo and leaves the alpha alone.',
+            '  float hot=uHot*pow(1.0-smoothstep(0.0,0.5,age), 1.7);',
+            '  col+=mix(vec3(1.0,0.34,0.05), vec3(1.0,0.88,0.62), hot)*hot*1.5;',
             '  float a=soft*uOpacity*fade*(1.0-cool*0.85);',
             '  if(a<0.012) discard;',
             '  gl_FragColor=vec4(col,a);',
@@ -478,6 +485,9 @@
       let flashPeak = 0;
       let lastPhase = '';
       let debrisBurst = 0;
+      // launch axis of the vapour column — tilted downrange at contact, since
+      // Chicxulub came in oblique. Null until then; falls back to the vertical.
+      let plumeAxis = null;
       let lastDebris = 0;
       let simTime = 0;
       let grainClock = 0;
