@@ -551,6 +551,482 @@
       }
       groundScene.add(smokeGroup);
 
+      // ======================================================================
+      //  Extra realism layer (added after the 9-pass checklist): seismic
+      //  arrival, glass-spherule patter, dry lightning in the smoke, wind in
+      //  the stand, trees actually alight, falling litter, the animal's breath
+      //  fogging in the cold, rain dripping off canopy and hide, splashes and
+      //  puddles on the floor, embers lifting off the ground fires, heat
+      //  shimmer over the fire band, ash mounding over the carcass, an eye
+      //  catch-light, and a few animals fleeing through the far murk at the
+      //  open. All procedural, no new sidecar assets.
+      // ======================================================================
+      const _pc = new THREE.Color();
+
+      const softDotTex = canvasTex((ctx, w, h) => {
+        const g = ctx.createRadialGradient(w / 2, h / 2, 0, w / 2, h / 2, w / 2);
+        g.addColorStop(0, 'rgba(255,255,255,1)');
+        g.addColorStop(0.4, 'rgba(255,255,255,0.5)');
+        g.addColorStop(1, 'rgba(255,255,255,0)');
+        ctx.fillStyle = g; ctx.fillRect(0, 0, w, h);
+      }, 64, 64);
+      const flameTex = canvasTex((ctx, w, h) => {
+        const g = ctx.createLinearGradient(0, h, 0, 0);
+        g.addColorStop(0.0, 'rgba(255,232,150,0.95)');
+        g.addColorStop(0.35, 'rgba(255,140,44,0.72)');
+        g.addColorStop(0.7, 'rgba(196,58,20,0.26)');
+        g.addColorStop(1.0, 'rgba(0,0,0,0)');
+        ctx.fillStyle = g; ctx.fillRect(0, 0, w, h);
+        // feather the side edges so the card never reads as a rectangle
+        ctx.globalCompositeOperation = 'destination-in';
+        const hg = ctx.createLinearGradient(0, 0, w, 0);
+        hg.addColorStop(0, 'rgba(0,0,0,0)');
+        hg.addColorStop(0.5, 'rgba(0,0,0,1)');
+        hg.addColorStop(1, 'rgba(0,0,0,0)');
+        ctx.fillStyle = hg; ctx.fillRect(0, 0, w, h);
+        ctx.globalCompositeOperation = 'source-over';
+        for (let i = 0; i < 44; i++) {
+          ctx.fillStyle = `rgba(0,0,0,${0.06 + Math.random() * 0.13})`;
+          ctx.beginPath();
+          ctx.arc(Math.random() * w, h * (0.1 + Math.random() * 0.9), 4 + Math.random() * 11, 0, 7);
+          ctx.fill();
+        }
+      }, 64, 128);
+      const ringTex = canvasTex((ctx, w, h) => {
+        ctx.strokeStyle = 'rgba(206,222,235,0.9)'; ctx.lineWidth = 6;
+        ctx.beginPath(); ctx.arc(w / 2, h / 2, w / 2 - 6, 0, 7); ctx.stroke();
+        ctx.strokeStyle = 'rgba(206,222,235,0.32)'; ctx.lineWidth = 3;
+        ctx.beginPath(); ctx.arc(w / 2, h / 2, w / 2 - 17, 0, 7); ctx.stroke();
+      }, 64, 64);
+
+      // ---- Wind: vertex sway injected into the existing stand materials ----
+      // One shared phase + amplitude uniform; per-instance offset from the
+      // instance matrix so no two trees move together. Amplitude is driven per
+      // frame in updateGround (firestorm gust + seismic shake).
+      const windPhaseU = { value: 0 }, windAmpU = { value: 0 };
+      function addSway(mat, amp, lever) {
+        mat.onBeforeCompile = (sh) => {
+          sh.uniforms.uWindPhase = windPhaseU;
+          sh.uniforms.uWindAmp = windAmpU;
+          sh.vertexShader = 'uniform float uWindPhase;\nuniform float uWindAmp;\n' + sh.vertexShader;
+          sh.vertexShader = sh.vertexShader.replace('#include <begin_vertex>',
+            '#include <begin_vertex>\n' +
+            '#ifdef USE_INSTANCING\n' +
+            '  float iph = instanceMatrix[3].x * 0.7 + instanceMatrix[3].z * 1.3;\n' +
+            '#else\n' +
+            '  float iph = 0.0;\n' +
+            '#endif\n' +
+            '  float lev = max(transformed.y - ' + lever.toFixed(2) + ', 0.0);\n' +
+            '  float gust = 0.6 + 0.4 * sin(uWindPhase * 0.27 + iph);\n' +
+            '  transformed.x += sin(uWindPhase + iph + transformed.y * 0.35) * uWindAmp * ' + amp.toFixed(3) + ' * gust * lev;\n' +
+            '  transformed.z += cos(uWindPhase * 0.9 + iph + transformed.y * 0.3) * uWindAmp * ' + amp.toFixed(3) + ' * gust * lev * 0.5;');
+        };
+        mat.needsUpdate = true;
+      }
+      addSway(trunkMat, 0.18, 1.5);
+      addSway(canopyMat, 1.0, 2.5);
+      addSway(fernMat, 1.7, 0.12);
+      addSway(grassMat, 1.4, 0.04);
+
+      // ---- Glass-spherule patter: the very first fallout, ahead of the ash -
+      const TEK = 520;
+      const tekPos = new Float32Array(TEK * 6), tekState = [];
+      for (let i = 0; i < TEK; i++) {
+        const s = { x: (Math.random() - 0.5) * 150, y: Math.random() * 96,
+          z: -Math.random() * 120 - 2, len: 1.2 + Math.random() * 2.4, v: 66 + Math.random() * 46 };
+        tekState.push(s);
+        tekPos[i * 6] = s.x; tekPos[i * 6 + 1] = s.y; tekPos[i * 6 + 2] = s.z;
+        tekPos[i * 6 + 3] = s.x + 0.1; tekPos[i * 6 + 4] = s.y - s.len; tekPos[i * 6 + 5] = s.z;
+      }
+      const tekGeo = new THREE.BufferGeometry();
+      tekGeo.setAttribute('position', new THREE.BufferAttribute(tekPos, 3));
+      const tekSeg = new THREE.LineSegments(tekGeo, new THREE.LineBasicMaterial({
+        color: 0xbfffd8, transparent: true, opacity: 0, fog: false,
+        blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false
+      }));
+      tekSeg.frustumCulled = false;
+      groundScene.add(tekSeg);
+
+      // ---- Dry lightning inside the smoke pall ---------------------------
+      const lgt = new THREE.PointLight(0xccd6ff, 0, 340, 2);
+      lgt.position.set(40, 60, -140);
+      groundScene.add(lgt);
+      const lgtState = { timer: 1.5 + Math.random() * 3, flash: 0 };
+
+      // ---- Trees actually alight: a few foreground crowns burn, then char -
+      const fireTrees = treePlace
+        .filter((t) => t.pz > -30 && Math.abs(t.px) < 26)
+        .sort((a, b) => b.sc - a.sc)
+        .slice(0, 5);
+      fireTrees.push({ px: -7, pz: -20, sc: 1.1 }, { px: 9, pz: -15, sc: 1.0 });
+      const treeFireCards = [];
+      const treeFireGrp = new THREE.Group();
+      fireTrees.forEach((t) => {
+        const m = new THREE.Mesh(
+          new THREE.PlaneGeometry(4.6 * t.sc, 10 * t.sc),
+          new THREE.MeshBasicMaterial({
+            map: flameTex, transparent: true, opacity: 0, depthWrite: false,
+            blending: THREE.AdditiveBlending, fog: true, toneMapped: false
+          }));
+        m.position.set(t.px, 4.6 * t.sc, t.pz);
+        m.userData = { ph: Math.random() * 6.28 };
+        treeFireGrp.add(m); treeFireCards.push(m);
+      });
+      groundScene.add(treeFireGrp);
+
+      // ---- Embers lifting off the ground fires -------------------------
+      const EMB = 220;
+      const embPos = new Float32Array(EMB * 3), embState = [];
+      for (let i = 0; i < EMB; i++) {
+        const tp = fireTrees[(Math.random() * fireTrees.length) | 0];
+        const a = { ox: tp.px, oz: tp.pz, x: tp.px + (Math.random() - 0.5) * 6,
+          y: Math.random() * 15, z: tp.pz + (Math.random() - 0.5) * 6,
+          v: 1.4 + Math.random() * 3.2, sw: Math.random() * 6.28 };
+        embState.push(a);
+        embPos[i * 3] = a.x; embPos[i * 3 + 1] = a.y; embPos[i * 3 + 2] = a.z;
+      }
+      const embGeo = new THREE.BufferGeometry();
+      embGeo.setAttribute('position', new THREE.BufferAttribute(embPos, 3));
+      const embPts = new THREE.Points(embGeo, new THREE.PointsMaterial({
+        map: softDotTex, color: 0xff7a2a, size: 0.14, transparent: true, opacity: 0,
+        blending: THREE.AdditiveBlending, depthWrite: false, fog: true, toneMapped: false
+      }));
+      embPts.frustumCulled = false;
+      groundScene.add(embPts);
+
+      // ---- Heat shimmer over the distant fire band -------------------
+      const shimmer = new THREE.Mesh(
+        new THREE.PlaneGeometry(560, 120),
+        new THREE.ShaderMaterial({
+          transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
+          uniforms: { uT: { value: 0 }, uA: { value: 0 } },
+          vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+          fragmentShader: [
+            'varying vec2 vUv; uniform float uT; uniform float uA;',
+            'void main(){',
+            '  float w = sin(vUv.x * 42.0 + uT * 6.0 + sin(vUv.y * 18.0 + uT * 3.0) * 2.0);',
+            '  w += sin(vUv.x * 17.0 - uT * 4.0);',
+            '  float band = smoothstep(0.0, 0.35, vUv.y) * (1.0 - smoothstep(0.5, 1.0, vUv.y));',
+            '  gl_FragColor = vec4(1.0, 0.55, 0.26, max(0.0, w) * 0.045 * band * uA);',
+            '}'
+          ].join('\n')
+        }));
+      shimmer.position.set(-10, 14, -150);
+      shimmer.frustumCulled = false;
+      groundScene.add(shimmer);
+
+      // ---- Falling litter: scorched needles and twigs coming down -----
+      const LIT = 340;
+      const litPos = new Float32Array(LIT * 3), litState = [];
+      for (let i = 0; i < LIT; i++) {
+        const tp = treePlace[(Math.random() * treePlace.length) | 0];
+        const s = { x: tp.px + (Math.random() - 0.5) * 4, y: 3 + Math.random() * 9 * tp.sc,
+          z: tp.pz + (Math.random() - 0.5) * 4, v: 1.1 + Math.random() * 2.6,
+          sw: Math.random() * 6.28, drift: (Math.random() - 0.5) * 1.4 };
+        litState.push(s);
+        litPos[i * 3] = s.x; litPos[i * 3 + 1] = s.y; litPos[i * 3 + 2] = s.z;
+      }
+      const litGeo = new THREE.BufferGeometry();
+      litGeo.setAttribute('position', new THREE.BufferAttribute(litPos, 3));
+      const litPts = new THREE.Points(litGeo, new THREE.PointsMaterial({
+        color: 0x4a3a1e, size: 0.1, transparent: true, opacity: 0, fog: true
+      }));
+      litPts.frustumCulled = false;
+      groundScene.add(litPts);
+
+      // ---- The animal's breath fogging in the cold ------------------
+      const breathPool = [];
+      for (let i = 0; i < 12; i++) {
+        const m = new THREE.Mesh(new THREE.PlaneGeometry(1, 1),
+          new THREE.MeshBasicMaterial({ map: puffTex, color: 0xdde7ef, transparent: true,
+            opacity: 0, depthWrite: false, fog: true }));
+        m.frustumCulled = false;
+        groundScene.add(m);
+        breathPool.push({ m, life: 1, vx: 0, vy: 0, vz: 0 });
+      }
+      let breathTimer = 0;
+
+      // ---- Rain dripping off the canopy and off the hide -----------
+      const DRIP = 260;
+      const dripPos = new Float32Array(DRIP * 6), dripState = [];
+      for (let i = 0; i < DRIP; i++) {
+        let x, z, y0;
+        if (i < 44) { x = 0.5 + (Math.random() - 0.5) * 3.4; z = -12 + (Math.random() - 0.5) * 2.6; y0 = 3.4 + Math.random() * 1.6; }
+        else { const tp = treePlace[(Math.random() * treePlace.length) | 0];
+          x = tp.px + (Math.random() - 0.5) * 3 * tp.sc; z = tp.pz + (Math.random() - 0.5) * 3 * tp.sc;
+          y0 = 3.5 + Math.random() * 7 * tp.sc; }
+        dripState.push({ x, z, y0, y: Math.random() * y0, v: 13 + Math.random() * 10,
+          len: 0.45 + Math.random() * 0.7, wait: Math.random() * 1.4 });
+      }
+      const dripGeo = new THREE.BufferGeometry();
+      dripGeo.setAttribute('position', new THREE.BufferAttribute(dripPos, 3));
+      const dripSeg = new THREE.LineSegments(dripGeo, new THREE.LineBasicMaterial({
+        color: 0xadbdcd, transparent: true, opacity: 0.4, fog: true
+      }));
+      dripSeg.frustumCulled = false;
+      groundScene.add(dripSeg);
+
+      // ---- Rain splashes on the forest floor ---------------------
+      const splashPool = [];
+      for (let i = 0; i < 46; i++) {
+        const m = new THREE.Mesh(new THREE.PlaneGeometry(1, 1),
+          new THREE.MeshBasicMaterial({ map: ringTex, color: 0xbccad6, transparent: true,
+            opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending, fog: true, toneMapped: false }));
+        m.rotation.x = -Math.PI / 2;
+        m.frustumCulled = false;
+        groundScene.add(m);
+        splashPool.push({ m, life: Math.random() });
+      }
+
+      // ---- Puddles: a thin wet sheen on the floor, not a mirror -------
+      // Soft-edged, unlit, low opacity, tinted to whatever the pall colour is
+      // so it reads as standing water catching the sky, then ash skins it over.
+      const puddleTex = canvasTex((ctx, w, h) => {
+        const g = ctx.createRadialGradient(w / 2, h / 2, 0, w / 2, h / 2, w / 2);
+        g.addColorStop(0, 'rgba(255,255,255,0.9)');
+        g.addColorStop(0.6, 'rgba(255,255,255,0.38)');
+        g.addColorStop(1, 'rgba(255,255,255,0)');
+        ctx.fillStyle = g; ctx.fillRect(0, 0, w, h);
+      }, 64, 64);
+      const puddleGrp = new THREE.Group();
+      [[-5, -8, 5], [3, -15, 4], [-11, -5, 3.5], [7, -4, 3], [-2, -19, 4.5], [11, -13, 3], [1, -2.5, 3.5]].forEach((p) => {
+        const m = new THREE.Mesh(new THREE.PlaneGeometry(p[2], p[2] * 0.66),
+          new THREE.MeshBasicMaterial({ map: puddleTex, color: 0x8f97a0, transparent: true,
+            opacity: 0, depthWrite: false, fog: true }));
+        m.rotation.x = -Math.PI / 2;
+        m.rotation.z = Math.random() * Math.PI;
+        m.position.set(p[0], 0.06, p[1]);
+        m.frustumCulled = false;
+        puddleGrp.add(m);
+      });
+      groundScene.add(puddleGrp);
+
+      // ---- Ash mounding over the carcass, and against foreground trunks --
+      const carcassAsh = new THREE.Mesh(new THREE.SphereGeometry(1, 18, 12),
+        new THREE.MeshStandardMaterial({ color: ASH_PALE, roughness: 1, metalness: 0 }));
+      carcassAsh.position.set(0.6, -0.4, -12);
+      carcassAsh.scale.setScalar(0.01);
+      carcassAsh.frustumCulled = false;
+      groundScene.add(carcassAsh);
+      const baseMoundGrp = new THREE.Group();
+      [[-4, -10], [5, -14], [-9, -6], [8, -8]].forEach((p) => {
+        const m = new THREE.Mesh(new THREE.SphereGeometry(1, 12, 8),
+          new THREE.MeshStandardMaterial({ color: ASH_PALE, roughness: 1, metalness: 0 }));
+        m.position.set(p[0], -0.35, p[1]);
+        m.scale.setScalar(0.01);
+        m.frustumCulled = false;
+        baseMoundGrp.add(m);
+      });
+      groundScene.add(baseMoundGrp);
+
+      // ---- Eye catch-light on the animal, blinking until it dies ----
+      const eyeGlow = new THREE.Sprite(new THREE.SpriteMaterial({
+        map: softDotTex, color: 0xfff1d6, transparent: true, opacity: 0,
+        depthWrite: false, blending: THREE.AdditiveBlending, fog: false, toneMapped: false
+      }));
+      eyeGlow.scale.setScalar(0.09);
+      groundScene.add(eyeGlow);
+
+      // ---- A few animals fleeing through the far murk at the open ---
+      const fleeMat = new THREE.MeshStandardMaterial({ color: 0x0c0a09, roughness: 1, metalness: 0 });
+      const fleeGrp = new THREE.Group();
+      const fleers = [];
+      for (let i = 0; i < 3; i++) {
+        const g = new THREE.Group();
+        const body = new THREE.Mesh(new THREE.BoxGeometry(2.6, 0.95, 0.7), fleeMat);
+        body.position.y = 1.5;
+        const neck = new THREE.Mesh(new THREE.BoxGeometry(0.5, 1.5, 0.42), fleeMat);
+        neck.position.set(-1.2, 2.4, 0);
+        const tail = new THREE.Mesh(new THREE.BoxGeometry(2.0, 0.32, 0.32), fleeMat);
+        tail.position.set(1.9, 1.6, 0);
+        g.add(body, neck, tail);
+        g.position.set(34 + i * 18, 0, -58 - i * 12);
+        g.userData = { spd: 22 + i * 6, ph: Math.random() * 6.28 };
+        fleeGrp.add(g); fleers.push(g);
+      }
+      groundScene.add(fleeGrp);
+
+      function resetGroundExtras() {
+        windAmpU.value = 0;
+        tekSeg.material.opacity = 0;
+        lgt.intensity = 0; lgtState.flash = 0; lgtState.timer = 1.5 + Math.random() * 3;
+        treeFireCards.forEach((m) => (m.material.opacity = 0));
+        embPts.material.opacity = 0;
+        shimmer.material.uniforms.uA.value = 0;
+        litPts.material.opacity = 0;
+        breathPool.forEach((b) => { b.life = 1; b.m.material.opacity = 0; });
+        breathTimer = 0;
+        dripSeg.material.opacity = 0;
+        splashPool.forEach((s) => { s.m.material.opacity = 0; });
+        puddleGrp.children.forEach((m) => (m.material.opacity = 0));
+        carcassAsh.scale.setScalar(0.01);
+        baseMoundGrp.children.forEach((m) => m.scale.setScalar(0.01));
+        eyeGlow.material.opacity = 0;
+        fleeGrp.visible = true;
+        fleers.forEach((g, i) => g.position.set(34 + i * 18, 0, -58 - i * 12));
+      }
+
+      function updateGroundExtras(t, pe, dt, broilG, ashLoad, acid, vigour) {
+        const RM = reduceMotion ? 0 : 1;
+
+        // spherule patter — heaviest at the open, gone before the ash bank
+        const tekA = clamp01(1 - pe / 0.11);
+        for (let i = 0; i < TEK; i++) {
+          const s = tekState[i];
+          s.y -= s.v * dt; s.x += 0.4 * dt;
+          if (s.y < -1) { s.y = 70 + Math.random() * 26; s.x = (Math.random() - 0.5) * 150; }
+          tekPos[i * 6] = s.x; tekPos[i * 6 + 1] = s.y; tekPos[i * 6 + 2] = s.z;
+          tekPos[i * 6 + 3] = s.x + 0.1; tekPos[i * 6 + 4] = s.y - s.len; tekPos[i * 6 + 5] = s.z;
+        }
+        tekGeo.attributes.position.needsUpdate = true;
+        tekSeg.material.opacity = 0.55 * tekA;
+
+        // dry lightning: only once the smoke exists, and not while the broiler
+        // sky is already lighting everything
+        if (RM) {
+          lgtState.timer -= dt;
+          if (lgtState.timer <= 0) {
+            lgtState.flash = 1;
+            lgtState.timer = 1.3 + Math.random() * 4.6;
+            lgt.position.set((Math.random() - 0.5) * 260, 38 + Math.random() * 52, -70 - Math.random() * 170);
+          }
+          lgtState.flash *= 0.8;
+          const la = clamp01((pe - 0.05) / 0.06) * (1 - broilG) * (1 - clamp01((pe - 0.82) / 0.15));
+          lgt.intensity = lgtState.flash * lgtState.flash * 7 * la;
+        }
+
+        // ground fires: fade in fast, burn, drop to embers by ~pe 0.5
+        const burn = clamp01((pe - 0.02) / 0.1) * (1 - ease(clamp01((pe - 0.26) / 0.24)));
+        for (const m of treeFireCards) {
+          m.quaternion.copy(groundCam.quaternion);
+          const fl = 0.7 + 0.3 * Math.sin(t * 11 + m.userData.ph) * RM;
+          m.material.opacity = burn * fl * 1.15;
+          m.scale.y = 1 + burn * 0.16 * Math.sin(t * 7 + m.userData.ph) * RM;
+        }
+        groundAmb.color.lerp(BROIL_LIGHT, burn * 0.3);
+        groundAmb.intensity += burn * 0.35;
+        groundHemi.intensity += burn * 0.18;
+
+        // embers lifting off those fires
+        for (let i = 0; i < EMB; i++) {
+          const a = embState[i];
+          a.y += a.v * dt; a.sw += dt * 3;
+          a.x += Math.sin(a.sw) * 0.5 * dt; a.z += Math.cos(a.sw * 0.7) * 0.4 * dt;
+          if (a.y > 21) { a.y = 0.4; a.x = a.ox + (Math.random() - 0.5) * 6; a.z = a.oz + (Math.random() - 0.5) * 6; }
+          embPos[i * 3] = a.x; embPos[i * 3 + 1] = a.y; embPos[i * 3 + 2] = a.z;
+        }
+        embGeo.attributes.position.needsUpdate = true;
+        embPts.material.opacity = Math.max(burn, broilG) * 0.8;
+
+        shimmer.material.uniforms.uT.value = t;
+        shimmer.material.uniforms.uA.value = broilG * RM;
+
+        // falling litter — canopy-defoliation window, plus a kick from the
+        // seismic shake at the open
+        const shake = RM * Math.max(0, 1 - pe / 0.055);
+        const litA = clamp01((pe - 0.08) / 0.12) * (1 - clamp01((pe - 0.6) / 0.3));
+        for (let i = 0; i < LIT; i++) {
+          const s = litState[i];
+          s.y -= s.v * dt; s.sw += dt * 3;
+          s.x += (Math.sin(s.sw) * 0.8 + s.drift) * dt * RM;
+          if (s.y < 0.05) { s.y = 3 + Math.random() * 9; }
+          litPos[i * 3] = s.x; litPos[i * 3 + 1] = s.y; litPos[i * 3 + 2] = s.z;
+        }
+        litGeo.attributes.position.needsUpdate = true;
+        litPts.material.opacity = clamp01(litA * 0.7 + shake * 0.5);
+        _pc.copy(DEAD_BROWN).lerp(ASH_PALE, ashLoad * 0.5);
+        litPts.material.color.copy(_pc);
+
+        // the animal's breath, while it still breathes
+        if (pe < 0.3 && RM) {
+          breathTimer -= dt;
+          if (breathTimer <= 0) {
+            breathTimer = 0.8 + (1 - vigour) * 2.6;
+            const p = breathPool.find((b) => b.life >= 1);
+            if (p) {
+              p.life = 0;
+              p.vx = -(0.9 + Math.random() * 0.5); p.vy = 0.45 + Math.random() * 0.4;
+              p.vz = (Math.random() - 0.5) * 0.4;
+              p.m.position.set(dino.position.x - 2.8, dino.position.y + 4.2, dino.position.z + 0.1);
+            }
+          }
+        }
+        for (const b of breathPool) {
+          if (b.life >= 1) { b.m.material.opacity = 0; continue; }
+          b.life += dt / 1.5;
+          b.m.position.x += b.vx * dt; b.m.position.y += b.vy * dt; b.m.position.z += b.vz * dt;
+          b.vy += 0.4 * dt;
+          b.m.quaternion.copy(groundCam.quaternion);
+          const s = 0.5 + b.life * 2.4; b.m.scale.setScalar(s);
+          b.m.material.opacity = Math.sin(clamp01(b.life) * Math.PI) * 0.45 * (1 - clamp01((pe - 0.24) / 0.08));
+        }
+
+        // drips off canopy tips and off the hide
+        for (let i = 0; i < DRIP; i++) {
+          const s = dripState[i];
+          if (s.wait > 0) {
+            s.wait -= dt;
+            dripPos[i * 6] = dripPos[i * 6 + 3] = 0; dripPos[i * 6 + 1] = dripPos[i * 6 + 4] = -60;
+            dripPos[i * 6 + 2] = dripPos[i * 6 + 5] = 0;
+            continue;
+          }
+          s.y -= s.v * dt;
+          if (s.y < 0.05) { s.y = s.y0; s.wait = 0.3 + Math.random() * 1.7; }
+          dripPos[i * 6] = s.x; dripPos[i * 6 + 1] = s.y; dripPos[i * 6 + 2] = s.z;
+          dripPos[i * 6 + 3] = s.x + 0.04; dripPos[i * 6 + 4] = s.y - s.len; dripPos[i * 6 + 5] = s.z;
+        }
+        dripGeo.attributes.position.needsUpdate = true;
+        dripSeg.material.opacity = 0.36 * (1 - clamp01((pe - 0.6) / 0.3) * 0.5);
+        _pc.copy(RAIN_COLD).lerp(RAIN_ACID, acid * 0.7);
+        dripSeg.material.color.copy(_pc);
+
+        // splashes on the floor, thinning as ash and puddles take over
+        const splA = 1 - clamp01((pe - 0.5) / 0.4);
+        for (const s of splashPool) {
+          s.life += dt / 0.42;
+          if (s.life >= 1) {
+            s.life = 0;
+            s.m.position.set(-6 + (Math.random() - 0.5) * 28, 0.06, -8 + (Math.random() - 0.5) * 24);
+          }
+          const sc = 0.15 + s.life * 1.3; s.m.scale.setScalar(sc);
+          s.m.material.opacity = (1 - s.life) * 0.45 * splA;
+        }
+
+        // puddles fill as a faint sheen, then ash skins them over
+        const wet = ease(clamp01((pe - 0.06) / 0.3));
+        const pAsh = clamp01((ashLoad - 0.25) / 0.6);
+        _pc.copy(groundScene.fog.color).lerp(ASH_PALE, pAsh * 0.6).lerp(RAIN_ACID, acid * 0.2);
+        for (const m of puddleGrp.children) {
+          m.material.opacity = wet * (0.16 + pAsh * 0.12);
+          m.material.color.copy(_pc);
+        }
+
+        // ash mounding over the carcass and against foreground trunks
+        const bury = ease(clamp01((pe - 0.5) / 0.42));
+        carcassAsh.scale.set(3.8 * bury + 0.01, 1.7 * bury + 0.01, 2.4 * bury + 0.01);
+        _pc.copy(ASH_PALE).lerp(DEAD_BROWN, 0.25 * (1 - bury));
+        carcassAsh.material.color.copy(_pc);
+        if (pe >= 0.3) dinoMat.color.lerp(ASH_PALE, bury * 0.5);
+        const mnd = ease(clamp01((ashLoad - 0.3) / 0.6));
+        for (const m of baseMoundGrp.children) m.scale.set(2.4 * mnd + 0.01, 0.7 * mnd + 0.01, 2.4 * mnd + 0.01);
+
+        // eye catch-light: blinks while alive, then out
+        eyeGlow.position.set(dino.position.x - 2.7, dino.position.y + 4.5, dino.position.z - 0.3);
+        const blink = Math.sin(t * 0.9) > -0.85 ? 1 : 0;
+        eyeGlow.material.opacity = (pe < 0.29 ? 1 : 0) * blink * clamp01(vigour) * 0.85;
+
+        // animals fleeing through the far murk, only at the very open
+        fleeGrp.visible = pe < 0.17;
+        if (fleeGrp.visible) {
+          for (const g of fleers) {
+            g.position.x -= g.userData.spd * dt;
+            if (g.position.x < -140) g.position.x = 120;
+            g.position.y = RM * Math.abs(Math.sin(t * 6 + g.userData.ph)) * 0.35;
+            g.rotation.z = RM * Math.sin(t * 6 + g.userData.ph) * 0.06;
+          }
+        }
+      }
+
       // The dinosaur is a Quaternius model — the "T-Rex" from the Animated
       // Dinosaur Bundle, CC0 / public domain, via Poly Pizza
       // (poly.pizza/u/Quaternius). Shipped as models/trex.glb (Armature with
@@ -721,6 +1197,7 @@
         forestFloor.material.color.setRGB(1, 1, 1);
         rain.material.color.copy(RAIN_COLD);
         dinoMat.color.copy(DINO_LIVE);
+        resetGroundExtras();
       }
 
       function updateGround(t, expoIn) {
@@ -731,6 +1208,16 @@
         // which is what the fire rain *is*. It burns out over the first
         // quarter of the phase and hands the frame to the cold rain and ash.
         const broilG = thermalPulse(pe / 0.34);
+
+        // Seismic arrival: the P/S waves reach the site as the scene opens and
+        // ring down over ~1 s, with one aftershock. Feeds both the camera and
+        // the wind term so the canopy shakes debris loose.
+        const quake = reduceMotion ? 0
+          : Math.max(0, 1 - pe / 0.055) + 0.45 * Math.max(0, 1 - Math.abs(pe - 0.13) / 0.025);
+        // Firestorm wind builds over the first half, never fully still after.
+        windPhaseU.value = t * 2.4;
+        windAmpU.value = (reduceMotion ? 0 : 1) *
+          (THREE.MathUtils.lerp(0.006, 0.02, ease(clamp01((pe - 0.02) / 0.5))) + quake * 0.05);
 
         // Ash keeps falling all phase but banks up fastest early, so the
         // ground pales long before the light has finished going.
@@ -808,6 +1295,9 @@
           cy + (reduceMotion ? 0 : Math.sin(t * 1.7) * 0.03),
           cz
         );
+        groundCam.position.x += Math.sin(t * 57.3) * quake * 0.45;
+        groundCam.position.y += Math.sin(t * 48.1) * quake * 0.3;
+        groundCam.position.z += Math.sin(t * 63.7) * quake * 0.28;
         // frame the animal (near z-12) against the horizon band; drift the
         // look-point down as it collapses
         groundCam.lookAt(0.5, 2.6 - pe * 1.5, -12);
@@ -893,10 +1383,13 @@
             dino.rotation.set(0, 0, 0);
             dino.scale.setScalar(1);
             dino.position.x = 0.5;
-            const sink = ease(clamp01((pe - 0.72) / 0.28));
-            dino.position.y = -sink * 2.6;
-            dinoMat.opacity = 1 - sink;
+            // no sinking through the floor / fading to nothing any more: it
+            // settles a little and the ash blanket (carcassAsh) buries it
+            const settle = ease(clamp01((pe - 0.72) / 0.28));
+            dino.position.y = -0.12 - settle * 0.4;
+            dinoMat.opacity = 1;
           }
         }
+        updateGroundExtras(t, pe, dt, broilG, ashLoad, acid, vigour);
       }
 
