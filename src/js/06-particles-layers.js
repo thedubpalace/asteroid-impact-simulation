@@ -36,13 +36,23 @@
           ctx.fillStyle = g;
           ctx.fillRect(0, 0, c.width, c.height);
         } else if (kind === 'soot') {
-          const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, r);
-          g.addColorStop(0, 'rgba(255,255,255,0.42)');
-          g.addColorStop(0.3, 'rgba(255,255,255,0.18)');
-          g.addColorStop(0.65, 'rgba(255,255,255,0.05)');
-          g.addColorStop(1, 'rgba(255,255,255,0)');
-          ctx.fillStyle = g;
-          ctx.fillRect(0, 0, c.width, c.height);
+          // ragged multi-lobe, not a plain radial gradient: a plain gradient is
+          // rotation-invariant, so a field of them reads as a field of identical
+          // dots however much you jitter size and position. Lobes give the
+          // sprite a silhouette that per-particle rotation can actually vary.
+          for (let i = 0; i < 9; i++) {
+            const ox = (Math.sin(i * 3.1) * 0.26 + Math.cos(i * 1.7) * 0.1) * r;
+            const oy = (Math.cos(i * 2.3) * 0.24 + Math.sin(i * 1.3) * 0.12) * r;
+            const rr = r * (0.3 + (i % 4) * 0.09);
+            const g = ctx.createRadialGradient(cx + ox, cy + oy, 0, cx + ox, cy + oy, rr);
+            g.addColorStop(0, 'rgba(255,255,255,0.34)');
+            g.addColorStop(0.4, 'rgba(255,255,255,0.16)');
+            g.addColorStop(1, 'rgba(255,255,255,0)');
+            ctx.fillStyle = g;
+            ctx.beginPath();
+            ctx.arc(cx + ox, cy + oy, rr, 0, Math.PI * 2);
+            ctx.fill();
+          }
         } else {
           // irregular rock-chunk silhouette for flying ejecta — a plain radial
           // gradient reads as a glowing marble, not a piece of broken rock
@@ -92,11 +102,13 @@
         const c = new Float32Array(count * 3);
         const s = new Float32Array(count);
         const k = new Float32Array(count);
+        const r = new Float32Array(count);
         const g = new THREE.BufferGeometry();
         g.setAttribute('position', new THREE.BufferAttribute(p, 3));
         g.setAttribute('color', new THREE.BufferAttribute(c, 3));
         g.setAttribute('aSize', new THREE.BufferAttribute(s, 1));
         g.setAttribute('aScale', new THREE.BufferAttribute(k, 1));
+        g.setAttribute('aRot', new THREE.BufferAttribute(r, 1));
         const mat = new THREE.ShaderMaterial({
           transparent: true, depthWrite: false, depthTest: true,
           blending: blending || THREE.NormalBlending,
@@ -111,12 +123,13 @@
             uProj: { value: 1000.0 }
           },
           vertexShader: [
-            'attribute float aSize; attribute float aScale; attribute vec3 color;',
-            'varying vec3 vColor; varying float vLife;',
+            'attribute float aSize; attribute float aScale; attribute float aRot; attribute vec3 color;',
+            'varying vec3 vColor; varying float vLife; varying float vRot;',
             'uniform float uScale; uniform float uGrow; uniform float uGrowMul; uniform float uProj;',
             'void main(){',
             '  vColor=color;',
             '  vLife=aSize;',
+            '  vRot=aRot;',
             '  float dist=length(position);',
             '  vec4 mv=modelViewMatrix*vec4(position,1.0);',
             '  float age=1.0-aSize;',
@@ -140,19 +153,29 @@
           ].join('\n'),
           fragmentShader: [
             'uniform sampler2D map; uniform float uOpacity; uniform float uGrow; uniform float uCool; uniform float uHot;',
-            'varying vec3 vColor; varying float vLife;',
+            'varying vec3 vColor; varying float vLife; varying float vRot;',
             'void main(){',
             '  vec2 pc=gl_PointCoord-vec2(0.5);',
             '  float rr=length(pc)*2.0;',
             '  if(rr>0.92) discard;',
-            '  vec4 tex=texture2D(map, gl_PointCoord);',
+            '  // Per-particle sprite rotation. gl_PointCoord is axis-aligned, so',
+            '  // without this every sprite in a system shows the exact same',
+            '  // silhouette at the same angle and a cloud of them reads as one',
+            '  // blob motif tiled across the screen instead of as smoke.',
+            '  float cs=cos(vRot), sn=sin(vRot);',
+            '  vec2 ruv=vec2(pc.x*cs-pc.y*sn, pc.x*sn+pc.y*cs)+vec2(0.5);',
+            '  vec4 tex=texture2D(map, ruv);',
             '  float age=1.0-vLife;',
             '  float fade=smoothstep(0.0,0.22,age)*smoothstep(0.0,0.45,vLife);',
             '  // soft round mask only for gas (uGrow=1) — a rock sprite already has a',
             '  // jagged silhouette baked into its alpha; masking it by pure radial',
-            '  // distance would sand its spikes back down into a circle',
-            '  float rim=mix(1.0, 1.0-smoothstep(0.42,0.92,rr), uGrow);',
-            '  float soft=pow(max(tex.a,0.0), mix(1.15, 0.88, uGrow))*rim;',
+            '  // distance would sand its spikes back down into a circle.',
+            '  // The gas falloff runs almost the whole radius: a mask that only',
+            '  // starts at 0.42 leaves a discernible disc edge on every puff.',
+            '  float rim=mix(1.0, 1.0-smoothstep(0.08,0.98,rr), uGrow);',
+            '  // >1 exponent for gas thins the mid-tones into wisps; <1 (the old',
+            '  // 0.88) pushed them up towards solid and made each puff a lump',
+            '  float soft=pow(max(tex.a,0.0), mix(1.15, 1.35, uGrow))*rim;',
             '  // incandescent gas (uCool=1) radiates its heat away over its life:',
             '  // white-yellow -> orange -> dull red -> gone, handing over to the ash',
             '  float cool=uCool*smoothstep(0.03,0.72,age);',
@@ -182,8 +205,9 @@
           p[i * 3] = p[i * 3 + 1] = p[i * 3 + 2] = 80;
           s[i] = 0;
           k[i] = 1;
+          r[i] = 0;
         }
-        return { count, p, c, s, k, g, pts, parts, mat };
+        return { count, p, c, s, k, r, g, pts, parts, mat };
       }
 
       const debrisSystems = [];
@@ -192,14 +216,22 @@
         debrisSystems.forEach((m) => { m.uniforms.uProj.value = px; });
       }
       // Dense enough to read as a column, large enough to keep mass without sprites
+      // resolving individually. The gas systems trade per-sprite opacity for
+      // size: at the old 0.05/0.58 a puff was about half a crater radius across
+      // and dark enough to see on its own, so the column read as a pile of
+      // separate lumps. Roughly 1.75x the width at ~0.55x the alpha keeps about
+      // the same optical depth through the plume while every sprite now overlaps
+      // several neighbours instead of sitting in its own gap.
       const ejecta = makeDebris(1800, 0.017, 0.98, gritTex, THREE.NormalBlending, false);
-      const smoke = makeDebris(4200, 0.05, 0.58, cloudTex, THREE.NormalBlending, true);
-      const soot = makeDebris(3200, 0.046, 0.58, sootTex, THREE.NormalBlending, true);
-      const mistFine = makeDebris(2600, 0.04, 0.40, mistTex, THREE.NormalBlending, true);
+      const smoke = makeDebris(4200, 0.088, 0.32, cloudTex, THREE.NormalBlending, true);
+      const soot = makeDebris(3200, 0.082, 0.30, sootTex, THREE.NormalBlending, true);
+      const mistFine = makeDebris(2600, 0.072, 0.24, mistTex, THREE.NormalBlending, true);
       // incandescent vapour fireball — the ~1/3 of impact energy that goes into
       // shock-heating rock and seawater, rising and billowing off the crater in
       // the first seconds before it cools into the ash column above
-      const fireball = makeDebris(900, 0.06, 0.55, cloudTex, THREE.AdditiveBlending, 2.6);
+      // the fireball keeps most of its opacity: it is additive glow rather than
+      // a lump, and it is what veils the hard-edged melt discs on the crater
+      const fireball = makeDebris(900, 0.088, 0.52, cloudTex, THREE.AdditiveBlending, 2.6);
       fireball.mat.uniforms.uCool.value = 1.0;
       setDebrisProj();
 
@@ -273,9 +305,11 @@
         () => { craterFloor.material.vertexColors = true; },
         () => { craterFloor.material.vertexColors = false; });
       wireMaterialToggle('layer-floor-see',
-        // floor is opaque by default now — flip transparent on to preview it
-        () => { craterFloor.material.transparent = true; craterFloor.material.opacity = 0.18; },
-        () => { craterFloor.material.transparent = false; craterFloor.material.opacity = 1; });
+        // floor is opaque by default now — flip transparent on to preview it.
+        // alphaTest has to come off with it: at 0.18 opacity every fragment
+        // would fail a 0.5 test and the preview would show nothing at all.
+        () => { craterFloor.material.transparent = true; craterFloor.material.opacity = 0.18; craterFloor.material.alphaTest = 0; },
+        () => { craterFloor.material.transparent = false; craterFloor.material.opacity = 1; craterFloor.material.alphaTest = 0.5; });
       wireLayerToggle('layer-boulders', [boulderGroup]);
       wireLayerToggle('layer-melt', [meltPool, meltHalo, meltOuter]);
       wireLayerToggle('layer-ejecta', [ejectaFan]);
@@ -317,9 +351,13 @@
       function spawnBurst(sys, origin, normal, n, speed, spread, life, palette, jet, ringR) {
         let spawned = 0;
         const basis = (jet === 'curtain' || jet === 'plume') ? impactBasis(origin) : null;
+        const gas = sys.mat.uniforms.uGrow.value > 0.5;
         function place(i) {
           const pr = sys.parts[i];
-          let scl = 0.55 + Math.random() * 0.5;
+          // gas gets a much wider size spread than rock — a cloud built from
+          // near-identical sprite sizes reads as a regular field of lumps, and
+          // the big faint ones are what tie the small ones into a continuum
+          let scl = gas ? 0.4 + Math.pow(Math.random(), 0.8) * 1.5 : 0.55 + Math.random() * 0.5;
           let lifeMul = 1;
           if (basis) {
             const az = Math.random() * Math.PI * 2;
@@ -374,6 +412,7 @@
           pr.max = life * (0.5 + Math.random() * 0.9) * lifeMul;
           pr.life = pr.max;
           pr.spin = Math.random() * Math.PI * 2;
+          sys.r[i] = pr.spin;
           pr.grow = 0.7 + Math.random() * 0.9;
           const col = palette[(spawned + (Math.random() * palette.length | 0)) % palette.length];
           const j = Math.random() * 0.1 - 0.05;
@@ -404,6 +443,7 @@
         sys.g.attributes.color.needsUpdate = true;
         sys.g.attributes.aSize.needsUpdate = true;
         sys.g.attributes.aScale.needsUpdate = true;
+        sys.g.attributes.aRot.needsUpdate = true;
       }
 
       const _n = new THREE.Vector3();

@@ -252,8 +252,13 @@
         craterPosArr[vi * 3 + 2] = cwz / 1.36;
         craterUvArr[vi * 2] = 0.5 + (x / CRATER_R) * 0.5;
         craterUvArr[vi * 2 + 1] = 0.5 + (y / CRATER_R) * 0.5;
-        const melt = Math.max(0, 1 - rn / 0.42);
-        const ash = Math.max(0, (rn - 0.55) / 0.45);
+        // Both of these used to be pure functions of rn, so the vertex colours
+        // laid perfectly concentric bands over the (already radially banded)
+        // albedo and the floor read as a painted bullseye. Push the two
+        // boundaries around with the same angular/positional noise the height
+        // profile uses so the melt sheet and the ash edge are lobed, not round.
+        const melt = Math.max(0, 1 - rn / (0.42 + n * 0.1));
+        const ash = Math.max(0, (rn - (0.55 + n * 0.12)) / 0.45);
         craterCol[vi * 3] = 0.1 + melt * 0.55 + ash * 0.14;
         craterCol[vi * 3 + 1] = 0.055 + melt * 0.2 + ash * 0.08;
         craterCol[vi * 3 + 2] = 0.035 + melt * 0.05 + ash * 0.04;
@@ -303,26 +308,64 @@
           // it from z-fighting the ejecta blanket at the shared rim.
           depthWrite: true,
           polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1,
+          // paintCraterMap already paints a noise-jittered rimFade down to
+          // alpha 0 well inside the mesh boundary, so the blanket is meant to
+          // break up into rubble and dissolve into the terrain. Going
+          // `transparent:false` to escape the transparent-pass sort threw that
+          // alpha away, and the disc rendered solid all the way to r=1 — a hard
+          // elliptical seam laid over the Yucatan, with the deliberately dark
+          // `edgeDark` band along it. alphaTest gets the designed ragged edge
+          // back while staying in the opaque pass with depth writes.
+          alphaTest: 0.5,
           // No roughnessMap by default — its glassy low-roughness centre + the
           // hard directional sun threw a specular sheen that added to the film.
-          roughness: 0.82, metalness: 0.02,
+          // Fully rough / non-metal: at 0.82/0.02 the near-flat disc still
+          // caught the sun as two bright crescents across the bowl.
+          roughness: 0.95, metalness: 0,
           emissive: 0xff6a18, emissiveIntensity: 0
         })
       );
       craterGroup.add(craterFloor);
 
-      function makeMeltDisc(size, color, z) {
+      // Three clean radial gradients on three concentric CircleGeometries is,
+      // seen down the impact normal, a literal target: three perfect rings
+      // sharing one centre. A cooling melt sheet is nothing like that — it
+      // ponds into a lobed pool and skins over with a dark crust that breaks
+      // the glow into a network rather than a smooth falloff. So paint a
+      // seeded, lobed, crusted pool instead, and give each of the three its
+      // own lobing, rotation and a small centre offset so they stop nesting.
+      function makeMeltDisc(size, color, z, seed, ox, oy) {
         const c = document.createElement('canvas');
         c.width = c.height = 256;
         const ctx = c.getContext('2d');
-        const g = ctx.createRadialGradient(128, 128, 0, 128, 128, 128);
-        g.addColorStop(0, 'rgba(255,210,120,0.95)');
-        g.addColorStop(0.22, 'rgba(255,120,28,0.78)');
-        g.addColorStop(0.48, 'rgba(210,48,10,0.42)');
-        g.addColorStop(0.76, 'rgba(90,12,4,0.12)');
-        g.addColorStop(1, 'rgba(0,0,0,0)');
-        ctx.fillStyle = g;
-        ctx.fillRect(0, 0, 256, 256);
+        const img = ctx.createImageData(256, 256);
+        const d = img.data;
+        for (let y = 0; y < 256; y++) {
+          for (let x = 0; x < 256; x++) {
+            const dx = (x - 128) / 128, dy = (y - 128) / 128;
+            const i = (y * 256 + x) * 4;
+            const ang = Math.atan2(dy, dx);
+            // irregular pool boundary, not a circle
+            const lobe = 1
+              + Math.sin(ang * 3 + seed) * 0.17
+              + Math.sin(ang * 5 - seed * 1.7) * 0.10
+              + (fbm(dx * 3 + seed, dy * 3 - seed) - 0.5) * 0.32;
+            const r = Math.sqrt(dx * dx + dy * dy) / Math.max(0.3, lobe);
+            if (r >= 1) { d[i + 3] = 0; continue; }
+            const n = fbm(dx * 7 + seed * 2, dy * 7 + seed) * 0.55
+              + noise2(dx * 19 + seed, dy * 19 - seed) * 0.45;
+            const hot = Math.pow(1 - r, 1.6) * (0.6 + n * 0.75);
+            // chilled crust rafts floating on the sheet — these are what stop
+            // the disc reading as a smooth airbrushed gradient
+            const crust = n > 0.6 ? (n - 0.6) / 0.4 : 0;
+            const a = Math.max(0, hot * (1 - crust * 0.8));
+            d[i] = Math.min(255, 255 * Math.min(1, 0.5 + hot * 0.95));
+            d[i + 1] = Math.min(255, 255 * Math.min(1, hot * hot * 0.9 + 0.1));
+            d[i + 2] = Math.min(255, 255 * hot * hot * hot * 0.45);
+            d[i + 3] = Math.min(255, a * 255);
+          }
+        }
+        ctx.putImageData(img, 0, 0);
         const tex = new THREE.CanvasTexture(c);
         const mesh = new THREE.Mesh(
           new THREE.CircleGeometry(size, 64),
@@ -331,13 +374,16 @@
             blending: THREE.AdditiveBlending, depthWrite: false
           })
         );
-        mesh.position.z = z;
+        mesh.position.set(ox, oy, z);
+        mesh.rotation.z = seed;
+        // ground glow: after the ejecta blanket, still behind the plume
+        mesh.renderOrder = -1;
         craterGroup.add(mesh);
         return mesh;
       }
-      const meltPool = makeMeltDisc(CRATER_R * 0.34, 0xffc060, 0.014);
-      const meltHalo = makeMeltDisc(CRATER_R * 0.62, 0xff4a10, 0.008);
-      const meltOuter = makeMeltDisc(CRATER_R * 0.88, 0xff2208, 0.004);
+      const meltPool = makeMeltDisc(CRATER_R * 0.34, 0xffc060, 0.014, 0.7, CRATER_R * 0.05, -CRATER_R * 0.03);
+      const meltHalo = makeMeltDisc(CRATER_R * 0.62, 0xff4a10, 0.008, 2.6, -CRATER_R * 0.04, CRATER_R * 0.06);
+      const meltOuter = makeMeltDisc(CRATER_R * 0.88, 0xff2208, 0.004, 4.9, CRATER_R * 0.03, CRATER_R * 0.02);
 
       function paintEjecta(ctx, w, h) {
         const img = ctx.createImageData(w, h);
@@ -440,6 +486,15 @@
           transparent: true, opacity: 0, depthWrite: false
         })
       );
+      // Both this and the debris systems are transparent with depthWrite off,
+      // so they are sorted against each other by distance — and Three sorts a
+      // Points system by its OBJECT origin, which for the debris is earthGroup's
+      // origin at the centre of the planet, 2.4 units behind the ground. The
+      // blanket therefore sorted as nearer than the fireball and painted its
+      // flat grey disc, radial rays and all, straight over the fire: the "hard
+      // pale lens with concentric rings" over the crater. Pin the ground layers
+      // to the back of the transparent pass instead of letting depth decide.
+      ejectaFan.renderOrder = -2;
       craterGroup.add(ejectaFan);
       const boulderMat = new THREE.MeshStandardMaterial({
         color: 0x2c2218, roughness: 0.96, metalness: 0.08, flatShading: true,

@@ -1223,8 +1223,13 @@
         craterPosArr[vi * 3 + 2] = cwz / 1.36;
         craterUvArr[vi * 2] = 0.5 + (x / CRATER_R) * 0.5;
         craterUvArr[vi * 2 + 1] = 0.5 + (y / CRATER_R) * 0.5;
-        const melt = Math.max(0, 1 - rn / 0.42);
-        const ash = Math.max(0, (rn - 0.55) / 0.45);
+        // Both of these used to be pure functions of rn, so the vertex colours
+        // laid perfectly concentric bands over the (already radially banded)
+        // albedo and the floor read as a painted bullseye. Push the two
+        // boundaries around with the same angular/positional noise the height
+        // profile uses so the melt sheet and the ash edge are lobed, not round.
+        const melt = Math.max(0, 1 - rn / (0.42 + n * 0.1));
+        const ash = Math.max(0, (rn - (0.55 + n * 0.12)) / 0.45);
         craterCol[vi * 3] = 0.1 + melt * 0.55 + ash * 0.14;
         craterCol[vi * 3 + 1] = 0.055 + melt * 0.2 + ash * 0.08;
         craterCol[vi * 3 + 2] = 0.035 + melt * 0.05 + ash * 0.04;
@@ -1274,26 +1279,64 @@
           // it from z-fighting the ejecta blanket at the shared rim.
           depthWrite: true,
           polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1,
+          // paintCraterMap already paints a noise-jittered rimFade down to
+          // alpha 0 well inside the mesh boundary, so the blanket is meant to
+          // break up into rubble and dissolve into the terrain. Going
+          // `transparent:false` to escape the transparent-pass sort threw that
+          // alpha away, and the disc rendered solid all the way to r=1 — a hard
+          // elliptical seam laid over the Yucatan, with the deliberately dark
+          // `edgeDark` band along it. alphaTest gets the designed ragged edge
+          // back while staying in the opaque pass with depth writes.
+          alphaTest: 0.5,
           // No roughnessMap by default — its glassy low-roughness centre + the
           // hard directional sun threw a specular sheen that added to the film.
-          roughness: 0.82, metalness: 0.02,
+          // Fully rough / non-metal: at 0.82/0.02 the near-flat disc still
+          // caught the sun as two bright crescents across the bowl.
+          roughness: 0.95, metalness: 0,
           emissive: 0xff6a18, emissiveIntensity: 0
         })
       );
       craterGroup.add(craterFloor);
 
-      function makeMeltDisc(size, color, z) {
+      // Three clean radial gradients on three concentric CircleGeometries is,
+      // seen down the impact normal, a literal target: three perfect rings
+      // sharing one centre. A cooling melt sheet is nothing like that — it
+      // ponds into a lobed pool and skins over with a dark crust that breaks
+      // the glow into a network rather than a smooth falloff. So paint a
+      // seeded, lobed, crusted pool instead, and give each of the three its
+      // own lobing, rotation and a small centre offset so they stop nesting.
+      function makeMeltDisc(size, color, z, seed, ox, oy) {
         const c = document.createElement('canvas');
         c.width = c.height = 256;
         const ctx = c.getContext('2d');
-        const g = ctx.createRadialGradient(128, 128, 0, 128, 128, 128);
-        g.addColorStop(0, 'rgba(255,210,120,0.95)');
-        g.addColorStop(0.22, 'rgba(255,120,28,0.78)');
-        g.addColorStop(0.48, 'rgba(210,48,10,0.42)');
-        g.addColorStop(0.76, 'rgba(90,12,4,0.12)');
-        g.addColorStop(1, 'rgba(0,0,0,0)');
-        ctx.fillStyle = g;
-        ctx.fillRect(0, 0, 256, 256);
+        const img = ctx.createImageData(256, 256);
+        const d = img.data;
+        for (let y = 0; y < 256; y++) {
+          for (let x = 0; x < 256; x++) {
+            const dx = (x - 128) / 128, dy = (y - 128) / 128;
+            const i = (y * 256 + x) * 4;
+            const ang = Math.atan2(dy, dx);
+            // irregular pool boundary, not a circle
+            const lobe = 1
+              + Math.sin(ang * 3 + seed) * 0.17
+              + Math.sin(ang * 5 - seed * 1.7) * 0.10
+              + (fbm(dx * 3 + seed, dy * 3 - seed) - 0.5) * 0.32;
+            const r = Math.sqrt(dx * dx + dy * dy) / Math.max(0.3, lobe);
+            if (r >= 1) { d[i + 3] = 0; continue; }
+            const n = fbm(dx * 7 + seed * 2, dy * 7 + seed) * 0.55
+              + noise2(dx * 19 + seed, dy * 19 - seed) * 0.45;
+            const hot = Math.pow(1 - r, 1.6) * (0.6 + n * 0.75);
+            // chilled crust rafts floating on the sheet — these are what stop
+            // the disc reading as a smooth airbrushed gradient
+            const crust = n > 0.6 ? (n - 0.6) / 0.4 : 0;
+            const a = Math.max(0, hot * (1 - crust * 0.8));
+            d[i] = Math.min(255, 255 * Math.min(1, 0.5 + hot * 0.95));
+            d[i + 1] = Math.min(255, 255 * Math.min(1, hot * hot * 0.9 + 0.1));
+            d[i + 2] = Math.min(255, 255 * hot * hot * hot * 0.45);
+            d[i + 3] = Math.min(255, a * 255);
+          }
+        }
+        ctx.putImageData(img, 0, 0);
         const tex = new THREE.CanvasTexture(c);
         const mesh = new THREE.Mesh(
           new THREE.CircleGeometry(size, 64),
@@ -1302,13 +1345,16 @@
             blending: THREE.AdditiveBlending, depthWrite: false
           })
         );
-        mesh.position.z = z;
+        mesh.position.set(ox, oy, z);
+        mesh.rotation.z = seed;
+        // ground glow: after the ejecta blanket, still behind the plume
+        mesh.renderOrder = -1;
         craterGroup.add(mesh);
         return mesh;
       }
-      const meltPool = makeMeltDisc(CRATER_R * 0.34, 0xffc060, 0.014);
-      const meltHalo = makeMeltDisc(CRATER_R * 0.62, 0xff4a10, 0.008);
-      const meltOuter = makeMeltDisc(CRATER_R * 0.88, 0xff2208, 0.004);
+      const meltPool = makeMeltDisc(CRATER_R * 0.34, 0xffc060, 0.014, 0.7, CRATER_R * 0.05, -CRATER_R * 0.03);
+      const meltHalo = makeMeltDisc(CRATER_R * 0.62, 0xff4a10, 0.008, 2.6, -CRATER_R * 0.04, CRATER_R * 0.06);
+      const meltOuter = makeMeltDisc(CRATER_R * 0.88, 0xff2208, 0.004, 4.9, CRATER_R * 0.03, CRATER_R * 0.02);
 
       function paintEjecta(ctx, w, h) {
         const img = ctx.createImageData(w, h);
@@ -1411,6 +1457,15 @@
           transparent: true, opacity: 0, depthWrite: false
         })
       );
+      // Both this and the debris systems are transparent with depthWrite off,
+      // so they are sorted against each other by distance — and Three sorts a
+      // Points system by its OBJECT origin, which for the debris is earthGroup's
+      // origin at the centre of the planet, 2.4 units behind the ground. The
+      // blanket therefore sorted as nearer than the fireball and painted its
+      // flat grey disc, radial rays and all, straight over the fire: the "hard
+      // pale lens with concentric rings" over the crater. Pin the ground layers
+      // to the back of the transparent pass instead of letting depth decide.
+      ejectaFan.renderOrder = -2;
       craterGroup.add(ejectaFan);
       const boulderMat = new THREE.MeshStandardMaterial({
         color: 0x2c2218, roughness: 0.96, metalness: 0.08, flatShading: true,
@@ -2087,13 +2142,23 @@
           ctx.fillStyle = g;
           ctx.fillRect(0, 0, c.width, c.height);
         } else if (kind === 'soot') {
-          const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, r);
-          g.addColorStop(0, 'rgba(255,255,255,0.42)');
-          g.addColorStop(0.3, 'rgba(255,255,255,0.18)');
-          g.addColorStop(0.65, 'rgba(255,255,255,0.05)');
-          g.addColorStop(1, 'rgba(255,255,255,0)');
-          ctx.fillStyle = g;
-          ctx.fillRect(0, 0, c.width, c.height);
+          // ragged multi-lobe, not a plain radial gradient: a plain gradient is
+          // rotation-invariant, so a field of them reads as a field of identical
+          // dots however much you jitter size and position. Lobes give the
+          // sprite a silhouette that per-particle rotation can actually vary.
+          for (let i = 0; i < 9; i++) {
+            const ox = (Math.sin(i * 3.1) * 0.26 + Math.cos(i * 1.7) * 0.1) * r;
+            const oy = (Math.cos(i * 2.3) * 0.24 + Math.sin(i * 1.3) * 0.12) * r;
+            const rr = r * (0.3 + (i % 4) * 0.09);
+            const g = ctx.createRadialGradient(cx + ox, cy + oy, 0, cx + ox, cy + oy, rr);
+            g.addColorStop(0, 'rgba(255,255,255,0.34)');
+            g.addColorStop(0.4, 'rgba(255,255,255,0.16)');
+            g.addColorStop(1, 'rgba(255,255,255,0)');
+            ctx.fillStyle = g;
+            ctx.beginPath();
+            ctx.arc(cx + ox, cy + oy, rr, 0, Math.PI * 2);
+            ctx.fill();
+          }
         } else {
           // irregular rock-chunk silhouette for flying ejecta — a plain radial
           // gradient reads as a glowing marble, not a piece of broken rock
@@ -2143,11 +2208,13 @@
         const c = new Float32Array(count * 3);
         const s = new Float32Array(count);
         const k = new Float32Array(count);
+        const r = new Float32Array(count);
         const g = new THREE.BufferGeometry();
         g.setAttribute('position', new THREE.BufferAttribute(p, 3));
         g.setAttribute('color', new THREE.BufferAttribute(c, 3));
         g.setAttribute('aSize', new THREE.BufferAttribute(s, 1));
         g.setAttribute('aScale', new THREE.BufferAttribute(k, 1));
+        g.setAttribute('aRot', new THREE.BufferAttribute(r, 1));
         const mat = new THREE.ShaderMaterial({
           transparent: true, depthWrite: false, depthTest: true,
           blending: blending || THREE.NormalBlending,
@@ -2162,12 +2229,13 @@
             uProj: { value: 1000.0 }
           },
           vertexShader: [
-            'attribute float aSize; attribute float aScale; attribute vec3 color;',
-            'varying vec3 vColor; varying float vLife;',
+            'attribute float aSize; attribute float aScale; attribute float aRot; attribute vec3 color;',
+            'varying vec3 vColor; varying float vLife; varying float vRot;',
             'uniform float uScale; uniform float uGrow; uniform float uGrowMul; uniform float uProj;',
             'void main(){',
             '  vColor=color;',
             '  vLife=aSize;',
+            '  vRot=aRot;',
             '  float dist=length(position);',
             '  vec4 mv=modelViewMatrix*vec4(position,1.0);',
             '  float age=1.0-aSize;',
@@ -2191,19 +2259,29 @@
           ].join('\n'),
           fragmentShader: [
             'uniform sampler2D map; uniform float uOpacity; uniform float uGrow; uniform float uCool; uniform float uHot;',
-            'varying vec3 vColor; varying float vLife;',
+            'varying vec3 vColor; varying float vLife; varying float vRot;',
             'void main(){',
             '  vec2 pc=gl_PointCoord-vec2(0.5);',
             '  float rr=length(pc)*2.0;',
             '  if(rr>0.92) discard;',
-            '  vec4 tex=texture2D(map, gl_PointCoord);',
+            '  // Per-particle sprite rotation. gl_PointCoord is axis-aligned, so',
+            '  // without this every sprite in a system shows the exact same',
+            '  // silhouette at the same angle and a cloud of them reads as one',
+            '  // blob motif tiled across the screen instead of as smoke.',
+            '  float cs=cos(vRot), sn=sin(vRot);',
+            '  vec2 ruv=vec2(pc.x*cs-pc.y*sn, pc.x*sn+pc.y*cs)+vec2(0.5);',
+            '  vec4 tex=texture2D(map, ruv);',
             '  float age=1.0-vLife;',
             '  float fade=smoothstep(0.0,0.22,age)*smoothstep(0.0,0.45,vLife);',
             '  // soft round mask only for gas (uGrow=1) — a rock sprite already has a',
             '  // jagged silhouette baked into its alpha; masking it by pure radial',
-            '  // distance would sand its spikes back down into a circle',
-            '  float rim=mix(1.0, 1.0-smoothstep(0.42,0.92,rr), uGrow);',
-            '  float soft=pow(max(tex.a,0.0), mix(1.15, 0.88, uGrow))*rim;',
+            '  // distance would sand its spikes back down into a circle.',
+            '  // The gas falloff runs almost the whole radius: a mask that only',
+            '  // starts at 0.42 leaves a discernible disc edge on every puff.',
+            '  float rim=mix(1.0, 1.0-smoothstep(0.08,0.98,rr), uGrow);',
+            '  // >1 exponent for gas thins the mid-tones into wisps; <1 (the old',
+            '  // 0.88) pushed them up towards solid and made each puff a lump',
+            '  float soft=pow(max(tex.a,0.0), mix(1.15, 1.35, uGrow))*rim;',
             '  // incandescent gas (uCool=1) radiates its heat away over its life:',
             '  // white-yellow -> orange -> dull red -> gone, handing over to the ash',
             '  float cool=uCool*smoothstep(0.03,0.72,age);',
@@ -2233,8 +2311,9 @@
           p[i * 3] = p[i * 3 + 1] = p[i * 3 + 2] = 80;
           s[i] = 0;
           k[i] = 1;
+          r[i] = 0;
         }
-        return { count, p, c, s, k, g, pts, parts, mat };
+        return { count, p, c, s, k, r, g, pts, parts, mat };
       }
 
       const debrisSystems = [];
@@ -2243,14 +2322,22 @@
         debrisSystems.forEach((m) => { m.uniforms.uProj.value = px; });
       }
       // Dense enough to read as a column, large enough to keep mass without sprites
+      // resolving individually. The gas systems trade per-sprite opacity for
+      // size: at the old 0.05/0.58 a puff was about half a crater radius across
+      // and dark enough to see on its own, so the column read as a pile of
+      // separate lumps. Roughly 1.75x the width at ~0.55x the alpha keeps about
+      // the same optical depth through the plume while every sprite now overlaps
+      // several neighbours instead of sitting in its own gap.
       const ejecta = makeDebris(1800, 0.017, 0.98, gritTex, THREE.NormalBlending, false);
-      const smoke = makeDebris(4200, 0.05, 0.58, cloudTex, THREE.NormalBlending, true);
-      const soot = makeDebris(3200, 0.046, 0.58, sootTex, THREE.NormalBlending, true);
-      const mistFine = makeDebris(2600, 0.04, 0.40, mistTex, THREE.NormalBlending, true);
+      const smoke = makeDebris(4200, 0.088, 0.32, cloudTex, THREE.NormalBlending, true);
+      const soot = makeDebris(3200, 0.082, 0.30, sootTex, THREE.NormalBlending, true);
+      const mistFine = makeDebris(2600, 0.072, 0.24, mistTex, THREE.NormalBlending, true);
       // incandescent vapour fireball — the ~1/3 of impact energy that goes into
       // shock-heating rock and seawater, rising and billowing off the crater in
       // the first seconds before it cools into the ash column above
-      const fireball = makeDebris(900, 0.06, 0.55, cloudTex, THREE.AdditiveBlending, 2.6);
+      // the fireball keeps most of its opacity: it is additive glow rather than
+      // a lump, and it is what veils the hard-edged melt discs on the crater
+      const fireball = makeDebris(900, 0.088, 0.52, cloudTex, THREE.AdditiveBlending, 2.6);
       fireball.mat.uniforms.uCool.value = 1.0;
       setDebrisProj();
 
@@ -2324,9 +2411,11 @@
         () => { craterFloor.material.vertexColors = true; },
         () => { craterFloor.material.vertexColors = false; });
       wireMaterialToggle('layer-floor-see',
-        // floor is opaque by default now — flip transparent on to preview it
-        () => { craterFloor.material.transparent = true; craterFloor.material.opacity = 0.18; },
-        () => { craterFloor.material.transparent = false; craterFloor.material.opacity = 1; });
+        // floor is opaque by default now — flip transparent on to preview it.
+        // alphaTest has to come off with it: at 0.18 opacity every fragment
+        // would fail a 0.5 test and the preview would show nothing at all.
+        () => { craterFloor.material.transparent = true; craterFloor.material.opacity = 0.18; craterFloor.material.alphaTest = 0; },
+        () => { craterFloor.material.transparent = false; craterFloor.material.opacity = 1; craterFloor.material.alphaTest = 0.5; });
       wireLayerToggle('layer-boulders', [boulderGroup]);
       wireLayerToggle('layer-melt', [meltPool, meltHalo, meltOuter]);
       wireLayerToggle('layer-ejecta', [ejectaFan]);
@@ -2368,9 +2457,13 @@
       function spawnBurst(sys, origin, normal, n, speed, spread, life, palette, jet, ringR) {
         let spawned = 0;
         const basis = (jet === 'curtain' || jet === 'plume') ? impactBasis(origin) : null;
+        const gas = sys.mat.uniforms.uGrow.value > 0.5;
         function place(i) {
           const pr = sys.parts[i];
-          let scl = 0.55 + Math.random() * 0.5;
+          // gas gets a much wider size spread than rock — a cloud built from
+          // near-identical sprite sizes reads as a regular field of lumps, and
+          // the big faint ones are what tie the small ones into a continuum
+          let scl = gas ? 0.4 + Math.pow(Math.random(), 0.8) * 1.5 : 0.55 + Math.random() * 0.5;
           let lifeMul = 1;
           if (basis) {
             const az = Math.random() * Math.PI * 2;
@@ -2425,6 +2518,7 @@
           pr.max = life * (0.5 + Math.random() * 0.9) * lifeMul;
           pr.life = pr.max;
           pr.spin = Math.random() * Math.PI * 2;
+          sys.r[i] = pr.spin;
           pr.grow = 0.7 + Math.random() * 0.9;
           const col = palette[(spawned + (Math.random() * palette.length | 0)) % palette.length];
           const j = Math.random() * 0.1 - 0.05;
@@ -2455,6 +2549,7 @@
         sys.g.attributes.color.needsUpdate = true;
         sys.g.attributes.aSize.needsUpdate = true;
         sys.g.attributes.aScale.needsUpdate = true;
+        sys.g.attributes.aRot.needsUpdate = true;
       }
 
       const _n = new THREE.Vector3();
