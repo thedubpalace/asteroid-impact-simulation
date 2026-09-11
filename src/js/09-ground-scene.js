@@ -604,7 +604,12 @@
       // instance matrix so no two trees move together. Amplitude is driven per
       // frame in updateGround (firestorm gust + seismic shake).
       const windPhaseU = { value: 0 }, windAmpU = { value: 0 };
-      function addSway(mat, amp, lever) {
+      // `bend` squares the lever so the displacement concentrates at the tip.
+      // A linear lever moves the whole crown including its base, which at any
+      // amplitude big enough to see slides the canopy off the top of its own
+      // trunk. Short plants (fern, grass) bend from the ground and want the
+      // linear version, so this is per-material rather than global.
+      function addSway(mat, amp, lever, bend) {
         mat.onBeforeCompile = (sh) => {
           sh.uniforms.uWindPhase = windPhaseU;
           sh.uniforms.uWindAmp = windAmpU;
@@ -617,16 +622,17 @@
             '  float iph = 0.0;\n' +
             '#endif\n' +
             '  float lev = max(transformed.y - ' + lever.toFixed(2) + ', 0.0);\n' +
+            (bend ? '  lev = lev * lev * ' + bend.toFixed(3) + ';\n' : '') +
             '  float gust = 0.6 + 0.4 * sin(uWindPhase * 0.27 + iph);\n' +
             '  transformed.x += sin(uWindPhase + iph + transformed.y * 0.35) * uWindAmp * ' + amp.toFixed(3) + ' * gust * lev;\n' +
             '  transformed.z += cos(uWindPhase * 0.9 + iph + transformed.y * 0.3) * uWindAmp * ' + amp.toFixed(3) + ' * gust * lev * 0.5;');
         };
         mat.needsUpdate = true;
       }
-      addSway(trunkMat, 0.18, 1.5);
-      addSway(canopyMat, 1.0, 2.5);
-      addSway(fernMat, 1.7, 0.12);
-      addSway(grassMat, 1.4, 0.04);
+      addSway(trunkMat, 0.16, 1.5, 0.06);
+      addSway(canopyMat, 1.0, 2.5, 0.115);
+      addSway(fernMat, 1.7, 0.12, 0);
+      addSway(grassMat, 1.4, 0.04, 0);
 
       // ---- Glass-spherule patter: the very first fallout, ahead of the ash -
       const TEK = 520;
@@ -738,8 +744,10 @@
       const breathPool = [];
       for (let i = 0; i < 12; i++) {
         const m = new THREE.Mesh(new THREE.PlaneGeometry(1, 1),
-          new THREE.MeshBasicMaterial({ map: puffTex, color: 0xdde7ef, transparent: true,
-            opacity: 0, depthWrite: false, fog: true }));
+          // fog off: the breath has to stay brighter than the pall it is seen
+          // against, and at 12 m the fog was already washing it into the haze
+          new THREE.MeshBasicMaterial({ map: puffTex, color: 0xcfd4d2, transparent: true,
+            opacity: 0, depthWrite: false, fog: false }));
         m.frustumCulled = false;
         groundScene.add(m);
         breathPool.push({ m, life: 1, vx: 0, vy: 0, vz: 0 });
@@ -938,27 +946,37 @@
         litPts.material.color.copy(_pc);
 
         // the animal's breath, while it still breathes
+        // The first pass emitted one big soft puff that expanded to ~2.9 units
+        // at 0.45 alpha — the same value and softness as the haze it sat in, so
+        // it read as background murk rather than as breath. It wants to be
+        // small, dense and brighter than the pall, and to clear quickly. Two
+        // puffs per exhalation (a nostril pair) and a capped interval so there
+        // is never a multi-second dead gap while the animal is still alive.
         if (pe < 0.3 && RM) {
           breathTimer -= dt;
           if (breathTimer <= 0) {
-            breathTimer = 0.8 + (1 - vigour) * 2.6;
-            const p = breathPool.find((b) => b.life >= 1);
-            if (p) {
+            breathTimer = 0.75 + (1 - vigour) * 1.45;
+            for (let k = 0; k < 2; k++) {
+              const p = breathPool.find((b) => b.life >= 1);
+              if (!p) break;
               p.life = 0;
-              p.vx = -(0.9 + Math.random() * 0.5); p.vy = 0.45 + Math.random() * 0.4;
-              p.vz = (Math.random() - 0.5) * 0.4;
-              p.m.position.set(dino.position.x - 2.8, dino.position.y + 4.2, dino.position.z + 0.1);
+              p.vx = -(1.5 + Math.random() * 0.7); p.vy = 0.3 + Math.random() * 0.3;
+              p.vz = (k ? 0.16 : -0.16) + (Math.random() - 0.5) * 0.2;
+              // clear of the snout tip, not pasted over the middle of the head:
+              // the puff has depthWrite off so anything short of the muzzle
+              // draws on top of the jaw instead of in front of it
+              p.m.position.set(dino.position.x - 4.3, dino.position.y + 4.15, dino.position.z + p.vz * 0.8);
             }
           }
         }
         for (const b of breathPool) {
           if (b.life >= 1) { b.m.material.opacity = 0; continue; }
-          b.life += dt / 1.5;
+          b.life += dt / 1.1;
           b.m.position.x += b.vx * dt; b.m.position.y += b.vy * dt; b.m.position.z += b.vz * dt;
-          b.vy += 0.4 * dt;
+          b.vy += 0.5 * dt;
           b.m.quaternion.copy(groundCam.quaternion);
-          const s = 0.5 + b.life * 2.4; b.m.scale.setScalar(s);
-          b.m.material.opacity = Math.sin(clamp01(b.life) * Math.PI) * 0.45 * (1 - clamp01((pe - 0.24) / 0.08));
+          const s = 0.3 + b.life * 1.35; b.m.scale.setScalar(s);
+          b.m.material.opacity = Math.sin(clamp01(b.life) * Math.PI) * 0.8 * (1 - clamp01((pe - 0.24) / 0.08));
         }
 
         // drips off canopy tips and off the hide
@@ -1215,9 +1233,12 @@
         const quake = reduceMotion ? 0
           : Math.max(0, 1 - pe / 0.055) + 0.45 * Math.max(0, 1 - Math.abs(pe - 0.13) / 0.025);
         // Firestorm wind builds over the first half, never fully still after.
+        // Measured: the first pass ran at 0.006-0.02, which put about 0.1 units
+        // of sway on a 13-unit conifer — under 1%, i.e. invisible. This range
+        // plus the squared lever puts the crown tips at a few per cent.
         windPhaseU.value = t * 2.4;
         windAmpU.value = (reduceMotion ? 0 : 1) *
-          (THREE.MathUtils.lerp(0.006, 0.02, ease(clamp01((pe - 0.02) / 0.5))) + quake * 0.05);
+          (THREE.MathUtils.lerp(0.022, 0.062, ease(clamp01((pe - 0.02) / 0.5))) + quake * 0.09);
 
         // Ash keeps falling all phase but banks up fastest early, so the
         // ground pales long before the light has finished going.
