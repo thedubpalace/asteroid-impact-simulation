@@ -13,19 +13,19 @@
 
       const PHASES = [
         { id: 'approach', name: 'Terminal approach', hud: 'Approach',
-          copy: 'A ten-kilometre carbonaceous chondrite falls out of the late Cretaceous sky toward a shallow tropical sea.',
+          copy: 'An asteroid about ten kilometres wide falls toward the shallow tropical sea that covered Yucatán. Its exact composition remains uncertain.',
           t0: 0, t1: 9.2 },
         { id: 'entry', name: 'Atmospheric entry', hud: 'Atmospheric Entry',
           copy: 'Ram pressure strips the surface into a fireball. Speed holds near 20 km/s as the Yucatán fills the sky.',
           t0: 9.2, t1: 12.4 },
         { id: 'impact', name: 'Impact flash', hud: 'Impact',
-          copy: 'Contact. A 100-million-megaton pulse excavates a crater 180 km across and briefly outshines the Sun.',
+          copy: 'Contact. In seconds, shock-heated rock and seawater excavate a transient cavity that collapses into the 180-kilometre final crater.',
           t0: 12.4, t1: 14.2 },
-        { id: 'shock', name: 'Global shockwave', hud: 'Shockwave',
-          copy: 'A hypersonic ring races over Pangea’s broken coasts. Forests ignite. Tsunamis climb every nearby shore.',
+        { id: 'shock', name: 'Near-field blast', hud: 'Air blast',
+          copy: 'The atmospheric blast races across the Gulf while ejecta falls back farther away. The ocean rebound becomes a much slower tsunami train.',
           t0: 14.2, t1: 20.5 },
-        { id: 'winter', name: 'Nuclear winter', hud: 'Global Winter',
-          copy: 'Soot and pulverised bedrock veil the planet. Sunlight collapses. The long night of the K–Pg extinction begins.',
+        { id: 'winter', name: 'Impact winter', hud: 'Global Winter',
+          copy: 'Over days to weeks, sulphate aerosols, soot and pulverised rock spread through the stratosphere. Sunlight then collapses for years.',
           t0: 20.5, t1: 34 },
         { id: 'extinction', name: 'The long night', hud: 'Extinction',
           copy: 'Down on the surface: no sunrise for years, acid rain in the dark. Photosynthesis stalls and food webs collapse from the plants up. Three in four species vanish — every non-avian dinosaur among them.',
@@ -148,4 +148,3 @@
       );
       sunGlow.position.copy(sunCore.position);
       scene.add(sunGlow);
-

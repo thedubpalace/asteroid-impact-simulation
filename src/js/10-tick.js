@@ -459,16 +459,18 @@
         // burnt — roughly the running integral of the pulse above
         scorch.material.uniforms.burn.value = ease(clamp01((t - 15.6) / 6.5));
 
-        // Air-blast shockwave is effectively supersonic and reaches any given
-        // distance far sooner than the tsunami — a gravity wave in water that,
-        // even in the open ocean, only manages ~700 km/h. It has to fire first
-        // and cross its full radius quickly, not trail behind the water wave.
+        // The destructive air blast is a regional effect, not a ring that
+        // instantaneously crosses the whole planet. The simulation compresses
+        // time, but keeps its reach inside the near field; the later dust veil
+        // is the phenomenon that becomes global.
         if (t >= 12.6) {
           const sw = clamp01((t - 12.6) / 3.6);
           shock.visible = shockLayerOn;
-          // a blast wave leaves hypersonic and decays toward the speed of
-          // sound, so the ring covers most of its ground early and crawls late
-          shock.material.uniforms.waveR.value = 3.15 * Math.pow(sw, 0.72);
+          // It leaves hypersonic and decays toward the speed of sound. 0.78 rad
+          // is roughly 5,000 km on Earth: an enormous near-field blast, while
+          // avoiding the false impression that a pressure front destroys the
+          // far side of the globe in minutes.
+          shock.material.uniforms.waveR.value = 0.78 * Math.pow(sw, 0.72);
           shock.material.uniforms.waveW.value = 0.055 + sw * 0.07;
           shock.material.uniforms.waveA.value = (1 - sw) * 1.15;
         }
@@ -482,11 +484,11 @@
         // Then the rebound sends the train out. A shallow-water wave runs at
         // sqrt(g*h): a few hundred metres per second over the deep basin, a
         // tenth of that once it is up on a shelf. It is far slower than the
-        // air blast above and it keeps slowing, so the radius decelerates and
-        // the crests spread apart behind it as the longer waves outrun them.
+        // air blast above. The compressed sequence cannot show the hours-to-
+        // days global propagation, so this beat stays in the Gulf-scale field.
         if (t >= 13.7) {
           const tw = clamp01((t - 13.7) / 10.5);
-          tsunami.material.uniforms.waveR.value = 1.6 * Math.pow(tw, 0.8);
+          tsunami.material.uniforms.waveR.value = 0.52 * Math.pow(tw, 0.8);
           tsunami.material.uniforms.trainW.value = 0.085 + tw * 0.13;
           tsunami.material.uniforms.waveA.value = (1 - tw * 0.72) * 0.5;
         }

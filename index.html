@@ -368,19 +368,19 @@
 
       const PHASES = [
         { id: 'approach', name: 'Terminal approach', hud: 'Approach',
-          copy: 'A ten-kilometre carbonaceous chondrite falls out of the late Cretaceous sky toward a shallow tropical sea.',
+          copy: 'An asteroid about ten kilometres wide falls toward the shallow tropical sea that covered Yucatán. Its exact composition remains uncertain.',
           t0: 0, t1: 9.2 },
         { id: 'entry', name: 'Atmospheric entry', hud: 'Atmospheric Entry',
           copy: 'Ram pressure strips the surface into a fireball. Speed holds near 20 km/s as the Yucatán fills the sky.',
           t0: 9.2, t1: 12.4 },
         { id: 'impact', name: 'Impact flash', hud: 'Impact',
-          copy: 'Contact. A 100-million-megaton pulse excavates a crater 180 km across and briefly outshines the Sun.',
+          copy: 'Contact. In seconds, shock-heated rock and seawater excavate a transient cavity that collapses into the 180-kilometre final crater.',
           t0: 12.4, t1: 14.2 },
-        { id: 'shock', name: 'Global shockwave', hud: 'Shockwave',
-          copy: 'A hypersonic ring races over Pangea’s broken coasts. Forests ignite. Tsunamis climb every nearby shore.',
+        { id: 'shock', name: 'Near-field blast', hud: 'Air blast',
+          copy: 'The atmospheric blast races across the Gulf while ejecta falls back farther away. The ocean rebound becomes a much slower tsunami train.',
           t0: 14.2, t1: 20.5 },
-        { id: 'winter', name: 'Nuclear winter', hud: 'Global Winter',
-          copy: 'Soot and pulverised bedrock veil the planet. Sunlight collapses. The long night of the K–Pg extinction begins.',
+        { id: 'winter', name: 'Impact winter', hud: 'Global Winter',
+          copy: 'Over days to weeks, sulphate aerosols, soot and pulverised rock spread through the stratosphere. Sunlight then collapses for years.',
           t0: 20.5, t1: 34 },
         { id: 'extinction', name: 'The long night', hud: 'Extinction',
           copy: 'Down on the surface: no sunrise for years, acid rain in the dark. Photosynthesis stalls and food webs collapse from the plants up. Three in four species vanish — every non-avian dinosaur among them.',
@@ -503,7 +503,6 @@
       );
       sunGlow.position.copy(sunCore.position);
       scene.add(sunGlow);
-
       function makeStars(count, radius, size, color) {
         const pos = new Float32Array(count * 3);
         for (let i = 0; i < count; i++) {
@@ -5064,16 +5063,18 @@
         // burnt — roughly the running integral of the pulse above
         scorch.material.uniforms.burn.value = ease(clamp01((t - 15.6) / 6.5));
 
-        // Air-blast shockwave is effectively supersonic and reaches any given
-        // distance far sooner than the tsunami — a gravity wave in water that,
-        // even in the open ocean, only manages ~700 km/h. It has to fire first
-        // and cross its full radius quickly, not trail behind the water wave.
+        // The destructive air blast is a regional effect, not a ring that
+        // instantaneously crosses the whole planet. The simulation compresses
+        // time, but keeps its reach inside the near field; the later dust veil
+        // is the phenomenon that becomes global.
         if (t >= 12.6) {
           const sw = clamp01((t - 12.6) / 3.6);
           shock.visible = shockLayerOn;
-          // a blast wave leaves hypersonic and decays toward the speed of
-          // sound, so the ring covers most of its ground early and crawls late
-          shock.material.uniforms.waveR.value = 3.15 * Math.pow(sw, 0.72);
+          // It leaves hypersonic and decays toward the speed of sound. 0.78 rad
+          // is roughly 5,000 km on Earth: an enormous near-field blast, while
+          // avoiding the false impression that a pressure front destroys the
+          // far side of the globe in minutes.
+          shock.material.uniforms.waveR.value = 0.78 * Math.pow(sw, 0.72);
           shock.material.uniforms.waveW.value = 0.055 + sw * 0.07;
           shock.material.uniforms.waveA.value = (1 - sw) * 1.15;
         }
@@ -5087,11 +5088,11 @@
         // Then the rebound sends the train out. A shallow-water wave runs at
         // sqrt(g*h): a few hundred metres per second over the deep basin, a
         // tenth of that once it is up on a shelf. It is far slower than the
-        // air blast above and it keeps slowing, so the radius decelerates and
-        // the crests spread apart behind it as the longer waves outrun them.
+        // air blast above. The compressed sequence cannot show the hours-to-
+        // days global propagation, so this beat stays in the Gulf-scale field.
         if (t >= 13.7) {
           const tw = clamp01((t - 13.7) / 10.5);
-          tsunami.material.uniforms.waveR.value = 1.6 * Math.pow(tw, 0.8);
+          tsunami.material.uniforms.waveR.value = 0.52 * Math.pow(tw, 0.8);
           tsunami.material.uniforms.trainW.value = 0.085 + tw * 0.13;
           tsunami.material.uniforms.waveA.value = (1 - tw * 0.72) * 0.5;
         }
