@@ -4220,22 +4220,37 @@
         }
         ctx.putImageData(img, 0, 0);
       }
-      function paintDinoBump(ctx, w, h) {
+      // Hide relief as a height field, shared by the normal-map bake below.
+      // A bumpMap only ever perturbs along the view-space derivative and washes
+      // out at grazing angles; a real tangent-space normal map keeps the scutes
+      // and pebbling readable across the whole body, which matters on a model
+      // with 1820 triangles and no texture of its own.
+      function dinoHeight(nx, ny) {
+        const peb = noise2(nx * 170, ny * 170);
+        const peb2 = noise2(nx * 96 + 3.0, ny * 78 + 6.0);
+        // rows of raised scutes running along the body
+        const scute = Math.abs(Math.sin((ny * 40 + fbm(nx * 5, ny * 5) * 5) * Math.PI));
+        const wrinkle = Math.abs(Math.sin((nx * 12 + fbm(nx * 6, ny * 6) * 4) * Math.PI));
+        return 0.5 + (peb - 0.5) * 0.47 + (peb2 - 0.5) * 0.235
+          + (1 - scute) * 0.133 - wrinkle * 0.118;
+      }
+      function paintDinoNormal(ctx, w, h) {
         const img = ctx.createImageData(w, h);
         const d = img.data;
+        const e = 1 / w;               // one texel, for the central difference
+        const S = 1.0;                 // relief strength; fine-tuned by normalScale
         for (let y = 0; y < h; y++) {
           const ny = y / h;
           for (let x = 0; x < w; x++) {
             const nx = x / w;
             const i = (y * w + x) * 4;
-            const peb = noise2(nx * 170, ny * 170);
-            const peb2 = noise2(nx * 96 + 3.0, ny * 78 + 6.0);
-            // rows of raised scutes running along the body
-            const scute = Math.abs(Math.sin((ny * 40 + fbm(nx * 5, ny * 5) * 5) * Math.PI));
-            const wrinkle = Math.abs(Math.sin((nx * 12 + fbm(nx * 6, ny * 6) * 4) * Math.PI));
-            let v = 128 + (peb - 0.5) * 120 + (peb2 - 0.5) * 60 + (1 - scute) * 34 - wrinkle * 30;
-            v = v < 0 ? 0 : v > 255 ? 255 : v;
-            d[i] = d[i + 1] = d[i + 2] = v;
+            const hx = dinoHeight(nx + e, ny) - dinoHeight(nx - e, ny);
+            const hy = dinoHeight(nx, ny + e) - dinoHeight(nx, ny - e);
+            const vx = -hx * S, vy = -hy * S, vz = 1;
+            const L = Math.sqrt(vx * vx + vy * vy + vz * vz);
+            d[i] = (vx / L * 0.5 + 0.5) * 255;
+            d[i + 1] = (vy / L * 0.5 + 0.5) * 255;
+            d[i + 2] = (vz / L * 0.5 + 0.5) * 255;
             d[i + 3] = 255;
           }
         }
@@ -4244,17 +4259,66 @@
       const dinoSkinTex = canvasTex(paintDinoSkin, 512, 512);
       dinoSkinTex.wrapS = dinoSkinTex.wrapT = THREE.RepeatWrapping;
       dinoSkinTex.repeat.set(1, 1.3);
-      const dinoBumpTex = canvasTex(paintDinoBump, 512, 512);
-      dinoBumpTex.wrapS = dinoBumpTex.wrapT = THREE.RepeatWrapping;
-      dinoBumpTex.repeat.set(1, 1.3);
-      dinoBumpTex.encoding = THREE.LinearEncoding;
+      const dinoNormalTex = canvasTex(paintDinoNormal, 512, 512);
+      dinoNormalTex.wrapS = dinoNormalTex.wrapT = THREE.RepeatWrapping;
+      dinoNormalTex.repeat.set(1, 1.3);
+      // a normal map is vector data, not colour — sRGB decoding would bend
+      // every normal toward +Z and flatten the relief back out
+      dinoNormalTex.encoding = THREE.LinearEncoding;
+
+      // Quaternius ships this flat-shaded: coincident vertices carry their own
+      // per-face normal, so a 1820-triangle body reads as faceted plates and the
+      // head shows visible banding. Average the normals of vertices that share a
+      // position, but only where the face already agrees with that average —
+      // past the limit (a genuine crease: jaw line, teeth, claws) the vertex
+      // keeps its own normal so those stay sharp. Done on normals alone rather
+      // than by merging vertices, which would have to carry skinIndex and
+      // skinWeight across the merge as well.
+      function smoothNormals(g, cosLimit) {
+        const pos = g.attributes.position, nrm = g.attributes.normal;
+        if (!pos || !nrm) return;
+        const n = pos.count;
+        const buckets = new Map();
+        for (let k = 0; k < n; k++) {
+          const key = Math.round(pos.getX(k) * 1e4) + ',' +
+            Math.round(pos.getY(k) * 1e4) + ',' + Math.round(pos.getZ(k) * 1e4);
+          let list = buckets.get(key);
+          if (!list) { list = []; buckets.set(key, list); }
+          list.push(k);
+        }
+        const out = new Float32Array(n * 3);
+        buckets.forEach((list) => {
+          let ax = 0, ay = 0, az = 0;
+          for (let j = 0; j < list.length; j++) {
+            ax += nrm.getX(list[j]); ay += nrm.getY(list[j]); az += nrm.getZ(list[j]);
+          }
+          const L = Math.sqrt(ax * ax + ay * ay + az * az) || 1;
+          ax /= L; ay /= L; az /= L;
+          for (let j = 0; j < list.length; j++) {
+            const k = list[j];
+            const ox = nrm.getX(k), oy = nrm.getY(k), oz = nrm.getZ(k);
+            const agree = ox * ax + oy * ay + oz * az;
+            const smooth = agree > cosLimit;
+            out[k * 3] = smooth ? ax : ox;
+            out[k * 3 + 1] = smooth ? ay : oy;
+            out[k * 3 + 2] = smooth ? az : oz;
+          }
+        });
+        for (let k = 0; k < n; k++) nrm.setXYZ(k, out[k * 3], out[k * 3 + 1], out[k * 3 + 2]);
+        nrm.needsUpdate = true;
+      }
 
       // three r128 gates skinned deformation on material.skinning — a fresh
       // material without it renders the rig frozen in bind pose (the model
       // translates as one rigid block, no clip ever shows). Keep it true.
       const dinoMat = new THREE.MeshStandardMaterial({
         color: 0xbdbbc2, roughness: 0.92, metalness: 0, transparent: true, opacity: 1,
-        map: dinoSkinTex, bumpMap: dinoBumpTex, bumpScale: 0.04,
+        map: dinoSkinTex, normalMap: dinoNormalTex,
+        // the animal renders about 300 px wide under a weak diffuse key, so a
+        // subtle setting (0.55 was the first try) never reaches the screen;
+        // 1.6 turns the hide sandy. This is the middle, and it is also what
+        // gives the body back the definition the normal smoothing took off it.
+        normalScale: new THREE.Vector2(1.1, 1.1),
         skinning: true
       });
       new THREE.GLTFLoader().load('models/trex.glb', (gltf) => {
@@ -4283,6 +4347,9 @@
                 else { uv[k * 2] = pz * (sz.z / (sz.y || 1)); uv[k * 2 + 1] = py; }
               }
               g.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
+              // after the UV pass, which wants the original per-face normals to
+              // pick its projection axis, not the smoothed ones
+              smoothNormals(g, 0.72);
             }
             o.material = dinoMat; o.castShadow = false; o.frustumCulled = false;
           }
