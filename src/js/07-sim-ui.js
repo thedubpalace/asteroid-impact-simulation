@@ -147,58 +147,83 @@
         setLoad(5, 'Opening the frame');
         await yieldFrame();
 
-        // Hybrid illustrative albedo: fixed master geography plus AI detail.
-        // Use 4K auxiliary maps to limit GPU memory. Relief is synthetic, not a DEM.
-        // Retain the original assets and procedural terrain as fallback paths.
+        // Load the registered impact-first set atomically. Keep previous image
+        // sets and the procedural terrain as fallback paths.
         setLoad(12, 'Loading the Cretaceous map');
         await yieldFrame();
         try {
-          const colorSize = renderer.capabilities.maxTextureSize >= 8192 ? '8k' : '4k';
-          let images;
+          const base = 'textures/impact-first-v1/';
+          const baseMaps = base+'maps/';
+          const [worldImage,regionImage,impactImage,worldWater,regionWater,impactWater,
+            worldRoughness,regionRoughness,impactRoughness,worldNormal,regionNormal,impactNormal,registration] = await Promise.all([
+            loadImage(base+'world.png'), loadImage(base+'region.png'), loadImage(base+'impact.png'),
+            loadImage(baseMaps+'world-water.png'), loadImage(baseMaps+'region-water.png'), loadImage(baseMaps+'impact-water.png'),
+            loadImage(baseMaps+'world-roughness.png'), loadImage(baseMaps+'region-roughness.png'), loadImage(baseMaps+'impact-roughness.png'),
+            loadImage(baseMaps+'world-normal.png'), loadImage(baseMaps+'region-normal.png'), loadImage(baseMaps+'impact-normal.png'),
+            fetch(base+'registration.json').then(response => {
+              if (!response.ok) throw new Error('Impact texture registration unavailable');
+              return response.json();
+            })
+          ]);
+          setLoad(48,'Aligning the impact coastline');
+          await yieldFrame();
+          configureImpactSurface([worldImage,regionImage,impactImage], {
+            water: [worldWater,regionWater,impactWater],
+            roughness: [worldRoughness,regionRoughness,impactRoughness],
+            normal: [worldNormal,regionNormal,impactNormal]
+          }, registration);
+          setLoad(66,'Wrapping the globe');
+        } catch (surfaceError) {
+          console.warn('Impact-first textures unavailable; loading previous maps',surfaceError);
           try {
-            images = await Promise.all([
-              loadImage('textures/hybrid8k/color-' + colorSize + '.png'),
-              loadImage('textures/hybrid8k/roughness-4k.png'),
-              loadImage('textures/hybrid8k/water-4k.png'),
-              loadImage('textures/hybrid8k/normal-4k.png')
-            ]);
-          } catch (textureError) {
-            console.warn('Hybrid texture unavailable; loading original assets', textureError);
-            images = await Promise.all([
-              loadImage('textures/earth_cretaceous_color.jpg'),
-              loadImage('textures/earth_cretaceous_bump.jpg'),
-              loadImage('textures/earth_cretaceous_water.png')
-            ]);
+            const colorSize = renderer.capabilities.maxTextureSize >= 8192 ? '8k' : '4k';
+            let images;
+            try {
+              images = await Promise.all([
+                loadImage('textures/hybrid8k/color-' + colorSize + '.png'),
+                loadImage('textures/hybrid8k/roughness-4k.png'),
+                loadImage('textures/hybrid8k/water-4k.png'),
+                loadImage('textures/hybrid8k/normal-4k.png')
+              ]);
+            } catch (textureError) {
+              console.warn('Hybrid texture unavailable; loading original assets', textureError);
+              images = await Promise.all([
+                loadImage('textures/earth_cretaceous_color.jpg'),
+                loadImage('textures/earth_cretaceous_bump.jpg'),
+                loadImage('textures/earth_cretaceous_water.png')
+              ]);
+            }
+            const [colorImg, reliefImg, waterImg, normalImg] = images;
+            setLoad(48, 'Wrapping the globe');
+            await yieldFrame();
+            earthMap = swapMap(earth, 'map', imgTex(colorImg, false));
+            bumpMap = swapMap(earth, 'bumpMap', null);
+            swapMap(earth, 'normalMap', normalImg ? imgTex(normalImg, true) : null);
+            earth.material.normalScale.set(0.35, 0.35);
+            specMap = swapMap(earth, 'roughnessMap', imgTex(reliefImg, true));
+            setLoad(66, 'Polishing seas');
+            await yieldFrame();
+            setWaterMask(imgTex(waterImg, true));
+          } catch (err) {
+            console.warn('Cretaceous map unavailable — using procedural terrain', err);
+            await bakeElevation();
+            setLoad(46, 'Painting continents');
+            await yieldFrame();
+            earthMap = swapMap(earth, 'map', canvasTex(paintCretaceous, 3072, 1536));
+            setLoad(56, 'Carving relief');
+            await yieldFrame();
+            bumpMap = swapMap(earth, 'bumpMap', canvasTex(paintBump, 2560, 1280));
+            setLoad(64, 'Polishing seas');
+            await yieldFrame();
+            specMap = swapMap(earth, 'roughnessMap', canvasTex(paintSpec, 1536, 768));
+            setWaterMask(canvasTex(paintWater, 1536, 768));
           }
-          const [colorImg, reliefImg, waterImg, normalImg] = images;
-          setLoad(48, 'Wrapping the globe');
-          await yieldFrame();
-          earthMap = swapMap(earth, 'map', imgTex(colorImg, false));
-          bumpMap = swapMap(earth, 'bumpMap', null);
-          swapMap(earth, 'normalMap', normalImg ? imgTex(normalImg, true) : null);
-          earth.material.normalScale.set(0.35, 0.35);
-          specMap = swapMap(earth, 'roughnessMap', imgTex(reliefImg, true));
-          setLoad(66, 'Polishing seas');
-          await yieldFrame();
-          setWaterMask(imgTex(waterImg, true));
-        } catch (err) {
-          console.warn('Cretaceous map unavailable — using procedural terrain', err);
-          await bakeElevation();
-          setLoad(46, 'Painting continents');
-          await yieldFrame();
-          earthMap = swapMap(earth, 'map', canvasTex(paintCretaceous, 3072, 1536));
-          setLoad(56, 'Carving relief');
-          await yieldFrame();
-          bumpMap = swapMap(earth, 'bumpMap', canvasTex(paintBump, 2560, 1280));
-          setLoad(64, 'Polishing seas');
-          await yieldFrame();
-          specMap = swapMap(earth, 'roughnessMap', canvasTex(paintSpec, 1536, 768));
-          setWaterMask(canvasTex(paintWater, 1536, 768));
         }
 
         setLoad(70, 'Detailing the impact site');
         await yieldFrame();
-        const siteDetail = canvasTex(paintImpactDetail, 1024, 1024);
+        const siteDetail = impactFirstUniforms.surfaceEnabled.value
+          ? placeholderTex('#808080') : canvasTex(paintImpactDetail, 1024, 1024);
         siteDetail.encoding = THREE.LinearEncoding;
         siteDetail.anisotropy = Math.min(8, renderer.capabilities.getMaxAnisotropy());
         impactDetailUniforms.impactDetailMap.value = siteDetail;

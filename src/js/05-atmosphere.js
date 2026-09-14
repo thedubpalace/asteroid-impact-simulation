@@ -309,6 +309,7 @@
         new THREE.ShaderMaterial({
           transparent: true, depthWrite: false, side: THREE.FrontSide,
           uniforms: {
+            ...impactFirstUniforms,
             impactDir: { value: impactNormal.clone() },
             waterMap: { value: waterMap },
             waveR: { value: 0 },
@@ -318,12 +319,13 @@
           },
           vertexShader: 'varying vec3 vN; varying vec2 vUv; void main(){ vN=normalize(position); vUv=uv; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0); }',
           fragmentShader: [
+            impactFirstGLSL,
             'uniform vec3 impactDir; uniform sampler2D waterMap;',
             'uniform float waveR; uniform float waveA; uniform float trainW; uniform float resurge;',
             'varying vec3 vN; varying vec2 vUv;',
             'void main(){',
             '  float ang=acos(clamp(dot(normalize(vN),normalize(impactDir)),-1.0,1.0));',
-            '  float wet=texture2D(waterMap, vUv).r;',
+            '  float wet=surfaceWater(vUv, texture2D(waterMap, vUv).r);',
             '  // the water mask fades across its own shoreline, so its midtones',
             '  // are the coast — that is where run-up piles the wave up',
             '  float coast=pow(4.0*wet*(1.0-wet), 0.6);',
@@ -403,6 +405,7 @@
         new THREE.ShaderMaterial({
           transparent: true, depthWrite: false, side: THREE.FrontSide,
           uniforms: {
+            ...impactFirstUniforms,
             impactDir: { value: impactNormal.clone() },
             downDir: { value: new THREE.Vector3(1, 0, 0) },
             waterMap: { value: waterMap },
@@ -415,6 +418,7 @@
           },
           vertexShader: 'varying vec3 vN; varying vec2 vUv; void main(){ vN=normalize(position); vUv=uv; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0); }',
           fragmentShader: [
+            impactFirstGLSL,
             'uniform sampler2D waterMap; varying vec2 vUv;',
             'uniform vec3 impactDir; uniform vec3 downDir; uniform float blanketR; uniform float burn; uniform float rayF; uniform float distF; uniform float heat; uniform float scorchA; varying vec3 vN;',
             'float h21(vec2 p){ return fract(sin(dot(p, vec2(127.1,311.7)))*43758.5453); }',
@@ -474,7 +478,7 @@
             '  vec3 charCol=vec3(0.12,0.09,0.06);',
             '  // rays and char only persist on land — over open water the fall-out',
             '  // sinks and disperses (the blanket itself still buries the shelf)',
-            '  float land=1.0-0.85*texture2D(waterMap, vUv).r;',
+            '  float land=1.0-0.85*surfaceWater(vUv, texture2D(waterMap, vUv).r);',
             '  float aB=blanket*scorchA;',
             '  float aR=ray*scorchA*0.7*land;',
             '  float aC=chr*scorchA*0.6*land;',
@@ -488,4 +492,3 @@
         })
       );
       earthGroup.add(scorch);
-

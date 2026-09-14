@@ -21,15 +21,21 @@
         ) }
       };
       earth.material.onBeforeCompile = function (shader) {
-        Object.assign(shader.uniforms, impactDetailUniforms);
+        Object.assign(shader.uniforms, impactDetailUniforms, impactFirstUniforms);
         shader.fragmentShader = shader.fragmentShader.replace('#include <common>', `
           #include <common>
+          ${impactFirstGLSL}
           uniform sampler2D impactDetailMap;
           uniform sampler2D impactDetailWater;
           uniform vec2 impactDetailCenter;
           uniform vec2 impactDetailExtent;
         `).replace('#include <map_fragment>', `
           #include <map_fragment>
+          vec3 registeredSurface = vec3(0.0);
+          if (surfaceEnabled > 0.5) {
+            registeredSurface = surfaceColor(vUv);
+            diffuseColor.rgb = diffuse * mapTexelToLinear(vec4(registeredSurface,1.0)).rgb;
+          }
           vec2 siteDelta = vUv - impactDetailCenter;
           siteDelta.x = mod(siteDelta.x + 0.5, 1.0) - 0.5;
           vec2 siteLocal = siteDelta / impactDetailExtent;
@@ -39,13 +45,14 @@
           float siteLand = 1.0 - smoothstep(0.15, 0.75, texture2D(impactDetailWater, vUv).r);
           float siteShelf = smoothstep(0.025, 0.16, diffuseColor.g) * (1.0 - siteLand);
           float siteGrain = siteDetail.r * siteLand * 0.65 + siteDetail.g * siteShelf * 0.22;
-          diffuseColor.rgb *= 1.0 + siteGrain * siteWeight;
+          diffuseColor.rgb *= 1.0 + siteGrain * siteWeight * (1.0-surfaceEnabled);
         `).replace('#include <roughnessmap_fragment>', `
           #include <roughnessmap_fragment>
           roughnessFactor = clamp(roughnessFactor + siteDetail.b * siteLand * siteWeight * 0.16, 0.04, 1.0);
+          if (surfaceEnabled > 0.5) roughnessFactor = surfaceRoughness(vUv,roughnessFactor);
         `);
       };
-      earth.material.customProgramCacheKey = () => 'impact-surface-detail-v1';
+      earth.material.customProgramCacheKey = () => 'impact-first-registered-v1';
 
       // Dynamic Blinn-Phong sun glint on open water, masked by the ocean map —
       // reads as a real specular highlight sliding across the sea rather than a
@@ -55,6 +62,7 @@
         new THREE.ShaderMaterial({
           transparent: true, depthWrite: false,
           uniforms: {
+            ...impactFirstUniforms,
             waterMap: { value: waterMap },
             sunDir: { value: sun.position.clone().normalize() },
             oceanColor: { value: new THREE.Color(0x052840) },
@@ -76,6 +84,7 @@
             '}'
           ].join('\n'),
           fragmentShader: [
+            impactFirstGLSL,
             'uniform sampler2D waterMap; uniform vec3 sunDir; uniform vec3 oceanColor;',
             'uniform vec3 impactDir; uniform float craterMaskRadius; uniform float craterMaskStrength;',
             'varying vec3 vWNormal; varying vec3 vWPos; varying vec2 vUv; varying vec3 vLocalN;',
@@ -87,7 +96,7 @@
             '  float edge = 1.0 + 0.13*sin(localN.x*63.0+localN.y*41.0)*sin(localN.z*57.0-localN.y*29.0);',
             '  float radius = max(0.0001, craterMaskRadius*edge);',
             '  float deposit = (1.0-smoothstep(radius*0.4, radius, angle))*craterMaskStrength;',
-            '  float mask = texture2D(waterMap, vUv).r;',
+            '  float mask = surfaceWater(vUv, texture2D(waterMap, vUv).r);',
             '  if (mask < 0.02) discard;',
             '  vec3 n = normalize(vWNormal);',
             '  vec3 v = normalize(cameraPosition - vWPos);',

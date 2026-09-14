@@ -1,0 +1,67 @@
+{
+  "method": "Color-classified water; synthetic land-only height; Sobel tangent normals; roughness from water, shore and local texture.",
+  "reports": [
+    {
+      "name": "world",
+      "size": [
+        1774,
+        887
+      ],
+      "water_fraction": 0.6779709164951847,
+      "height_range": [
+        0,
+        64161
+      ],
+      "roughness_range": [
+        20,
+        255
+      ]
+    },
+    {
+      "name": "region",
+      "size": [
+        1254,
+        1254
+      ],
+      "water_fraction": 0.5679280846744962,
+      "height_range": [
+        0,
+        64869
+      ],
+      "roughness_range": [
+        20,
+        255
+      ]
+    },
+    {
+      "name": "impact",
+      "size": [
+        1254,
+        1254
+      ],
+      "water_fraction": 0.6126265169956935,
+      "height_range": [
+        0,
+        64915
+      ],
+      "roughness_range": [
+        20,
+        255
+      ]
+    }
+  ],
+  "sha256": {
+    "impact-height.png": "0fb5b4dc92b715577d94a619c1c5defb02fc27ad49da56b3a267a97bc8671f5a",
+    "impact-normal.png": "ea9ebd751f8a941eb4affbbe8dbf89fa38280fa3680a8c1885e849a827ab2256",
+    "impact-roughness.png": "74cb69aa0e95fb23aa61b971f92370c816ca2ad06a2e2cdc1ebc6e4cc24ae039",
+    "impact-water.png": "7f04551a03fa0ecdbb5adc9f0e571f4e800328e03b43a009ff4f039ad20641ec",
+    "region-height.png": "f37a5fe9847fc2e1b5fa630d4ea32385f52e35405e00079f090cdd55c3af048d",
+    "region-normal.png": "cc023a527670af7077140669901e82f2c494e0a197c6d19c13f6437f0938305a",
+    "region-roughness.png": "58c5837623c44241f2fb4a24e6018001158a188e3d56d026396faee7b754ee7b",
+    "region-water.png": "1daa0fdc3270fd8b47f4743323afea4a27be1aa1f3340307e10d284579764483",
+    "world-height.png": "4c363bb8563476e69d93645b45de3defcf7a55b7ae9c541db97b88ff473a4627",
+    "world-normal.png": "4f5504d7ae58ceb8f7489637cab6585be34b6952a1298b2100b4e6a88fb7d9e7",
+    "world-roughness.png": "0fa0f43d8d0ea175865b39d2615595e5397920343f52811a8b58e650bf2f2d14",
+    "world-water.png": "d906e52275f42e33e2e00e8115ad1fb146c49d9a92bfabb75f8de31805ec03f2"
+  }
+}
