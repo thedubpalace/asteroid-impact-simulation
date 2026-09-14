@@ -492,7 +492,10 @@
           const tw = clamp01((t - 13.7) / 10.5);
           tsunami.material.uniforms.waveR.value = 0.52 * Math.pow(tw, 0.8);
           tsunami.material.uniforms.trainW.value = 0.085 + tw * 0.13;
-          tsunami.material.uniforms.waveA.value = (1 - tw * 0.72) * 0.5;
+          // The train reaches its maximum radius at tw=1; fade it out there
+          // instead of leaving a dim crest parked on the globe forever.
+          const trainFade = 1 - smoothstep(0.82, 1.0, tw);
+          tsunami.material.uniforms.waveA.value = (1 - tw * 0.72) * 0.5 * trainFade;
         }
 
         if (t >= 16.8) {
