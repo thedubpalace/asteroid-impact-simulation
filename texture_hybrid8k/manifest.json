@@ -1,0 +1,190 @@
+{
+  "source": "C:\\Users\\ADMIN\\Documents\\code\\asteroid-impact-simulation\\textures\\earth_cretaceous_color.jpg",
+  "source_size": [
+    3072,
+    1536
+  ],
+  "output_size": [
+    8192,
+    4096
+  ],
+  "padding": 128,
+  "tiles": [
+    {
+      "name": "A",
+      "core": [
+        0,
+        0,
+        2048,
+        1024
+      ],
+      "input": "C:\\Users\\ADMIN\\Documents\\code\\asteroid-impact-simulation\\texture_hybrid8k\\inputs\\A.png",
+      "prompt": "Use case: precise-object-edit. Image 1 is the exact edit target, a fixed geographic crop from a globe surface texture, NOT a reference for a new composition. This is tile A of a locked 4x4 equirectangular map. Return a single 2304x1280 landscape raster matching the supplied framing exactly. Improve only fine surface detail: photorealistic satellite-scale forest canopy variation, subtle rock and sediment grain, coherent fine drainage within existing land, natural terrain microstructure. Keep every coastline, island outline, land/water boundary, mountain belt, lake, river mouth and all large features at the EXACT SAME PIXEL POSITIONS. No panning, zooming, reframing, stretching, rotating or relocating geography. Preserve the outer 128-pixel context border and the low-frequency color palette. Dark blue and cyan are WATER, not land: keep the ocean smooth, subdued and free of invented rocky relief. This is an unlit base-color/albedo asset: neutral diffuse illumination, no shadows or directional highlights, no clouds, atmospheric haze, vignette, glare, specular reflections or depth-of-field. No new islands, no cities, roads, borders, grid, labels, text, symbols or watermark. Do not draw a whole globe or a world map: enhance ONLY the exact crop supplied. The region is an illustrative warm late-Cretaceous world; do not add polar ice."
+    },
+    {
+      "name": "B",
+      "core": [
+        2048,
+        0,
+        2048,
+        1024
+      ],
+      "input": "C:\\Users\\ADMIN\\Documents\\code\\asteroid-impact-simulation\\texture_hybrid8k\\inputs\\B.png",
+      "prompt": "Use case: precise-object-edit. Image 1 is the exact edit target, a fixed geographic crop from a globe surface texture, NOT a reference for a new composition. This is tile B of a locked 4x4 equirectangular map. Return a single 2304x1280 landscape raster matching the supplied framing exactly. Improve only fine surface detail: photorealistic satellite-scale forest canopy variation, subtle rock and sediment grain, coherent fine drainage within existing land, natural terrain microstructure. Keep every coastline, island outline, land/water boundary, mountain belt, lake, river mouth and all large features at the EXACT SAME PIXEL POSITIONS. No panning, zooming, reframing, stretching, rotating or relocating geography. Preserve the outer 128-pixel context border and the low-frequency color palette. Dark blue and cyan are WATER, not land: keep the ocean smooth, subdued and free of invented rocky relief. This is an unlit base-color/albedo asset: neutral diffuse illumination, no shadows or directional highlights, no clouds, atmospheric haze, vignette, glare, specular reflections or depth-of-field. No new islands, no cities, roads, borders, grid, labels, text, symbols or watermark. Do not draw a whole globe or a world map: enhance ONLY the exact crop supplied. The region is an illustrative warm late-Cretaceous world; do not add polar ice."
+    },
+    {
+      "name": "C",
+      "core": [
+        4096,
+        0,
+        2048,
+        1024
+      ],
+      "input": "C:\\Users\\ADMIN\\Documents\\code\\asteroid-impact-simulation\\texture_hybrid8k\\inputs\\C.png",
+      "prompt": "Use case: precise-object-edit. Image 1 is the exact edit target, a fixed geographic crop from a globe surface texture, NOT a reference for a new composition. This is tile C of a locked 4x4 equirectangular map. Return a single 2304x1280 landscape raster matching the supplied framing exactly. Improve only fine surface detail: photorealistic satellite-scale forest canopy variation, subtle rock and sediment grain, coherent fine drainage within existing land, natural terrain microstructure. Keep every coastline, island outline, land/water boundary, mountain belt, lake, river mouth and all large features at the EXACT SAME PIXEL POSITIONS. No panning, zooming, reframing, stretching, rotating or relocating geography. Preserve the outer 128-pixel context border and the low-frequency color palette. Dark blue and cyan are WATER, not land: keep the ocean smooth, subdued and free of invented rocky relief. This is an unlit base-color/albedo asset: neutral diffuse illumination, no shadows or directional highlights, no clouds, atmospheric haze, vignette, glare, specular reflections or depth-of-field. No new islands, no cities, roads, borders, grid, labels, text, symbols or watermark. Do not draw a whole globe or a world map: enhance ONLY the exact crop supplied. The region is an illustrative warm late-Cretaceous world; do not add polar ice."
+    },
+    {
+      "name": "D",
+      "core": [
+        6144,
+        0,
+        2048,
+        1024
+      ],
+      "input": "C:\\Users\\ADMIN\\Documents\\code\\asteroid-impact-simulation\\texture_hybrid8k\\inputs\\D.png",
+      "prompt": "Use case: precise-object-edit. Image 1 is the exact edit target, a fixed geographic crop from a globe surface texture, NOT a reference for a new composition. This is tile D of a locked 4x4 equirectangular map. Return a single 2304x1280 landscape raster matching the supplied framing exactly. Improve only fine surface detail: photorealistic satellite-scale forest canopy variation, subtle rock and sediment grain, coherent fine drainage within existing land, natural terrain microstructure. Keep every coastline, island outline, land/water boundary, mountain belt, lake, river mouth and all large features at the EXACT SAME PIXEL POSITIONS. No panning, zooming, reframing, stretching, rotating or relocating geography. Preserve the outer 128-pixel context border and the low-frequency color palette. Dark blue and cyan are WATER, not land: keep the ocean smooth, subdued and free of invented rocky relief. This is an unlit base-color/albedo asset: neutral diffuse illumination, no shadows or directional highlights, no clouds, atmospheric haze, vignette, glare, specular reflections or depth-of-field. No new islands, no cities, roads, borders, grid, labels, text, symbols or watermark. Do not draw a whole globe or a world map: enhance ONLY the exact crop supplied. The region is an illustrative warm late-Cretaceous world; do not add polar ice."
+    },
+    {
+      "name": "E",
+      "core": [
+        0,
+        1024,
+        2048,
+        1024
+      ],
+      "input": "C:\\Users\\ADMIN\\Documents\\code\\asteroid-impact-simulation\\texture_hybrid8k\\inputs\\E.png",
+      "prompt": "Use case: precise-object-edit. Image 1 is the exact edit target, a fixed geographic crop from a globe surface texture, NOT a reference for a new composition. This is tile E of a locked 4x4 equirectangular map. Return a single 2304x1280 landscape raster matching the supplied framing exactly. Improve only fine surface detail: photorealistic satellite-scale forest canopy variation, subtle rock and sediment grain, coherent fine drainage within existing land, natural terrain microstructure. Keep every coastline, island outline, land/water boundary, mountain belt, lake, river mouth and all large features at the EXACT SAME PIXEL POSITIONS. No panning, zooming, reframing, stretching, rotating or relocating geography. Preserve the outer 128-pixel context border and the low-frequency color palette. Dark blue and cyan are WATER, not land: keep the ocean smooth, subdued and free of invented rocky relief. This is an unlit base-color/albedo asset: neutral diffuse illumination, no shadows or directional highlights, no clouds, atmospheric haze, vignette, glare, specular reflections or depth-of-field. No new islands, no cities, roads, borders, grid, labels, text, symbols or watermark. Do not draw a whole globe or a world map: enhance ONLY the exact crop supplied. The region is an illustrative warm late-Cretaceous world; do not add polar ice."
+    },
+    {
+      "name": "F",
+      "core": [
+        2048,
+        1024,
+        2048,
+        1024
+      ],
+      "input": "C:\\Users\\ADMIN\\Documents\\code\\asteroid-impact-simulation\\texture_hybrid8k\\inputs\\F.png",
+      "prompt": "Use case: precise-object-edit. Image 1 is the exact edit target, a fixed geographic crop from a globe surface texture, NOT a reference for a new composition. This is tile F of a locked 4x4 equirectangular map. Return a single 2304x1280 landscape raster matching the supplied framing exactly. Improve only fine surface detail: photorealistic satellite-scale forest canopy variation, subtle rock and sediment grain, coherent fine drainage within existing land, natural terrain microstructure. Keep every coastline, island outline, land/water boundary, mountain belt, lake, river mouth and all large features at the EXACT SAME PIXEL POSITIONS. No panning, zooming, reframing, stretching, rotating or relocating geography. Preserve the outer 128-pixel context border and the low-frequency color palette. Dark blue and cyan are WATER, not land: keep the ocean smooth, subdued and free of invented rocky relief. This is an unlit base-color/albedo asset: neutral diffuse illumination, no shadows or directional highlights, no clouds, atmospheric haze, vignette, glare, specular reflections or depth-of-field. No new islands, no cities, roads, borders, grid, labels, text, symbols or watermark. Do not draw a whole globe or a world map: enhance ONLY the exact crop supplied. The region is an illustrative warm late-Cretaceous world; do not add polar ice."
+    },
+    {
+      "name": "G",
+      "core": [
+        4096,
+        1024,
+        2048,
+        1024
+      ],
+      "input": "C:\\Users\\ADMIN\\Documents\\code\\asteroid-impact-simulation\\texture_hybrid8k\\inputs\\G.png",
+      "prompt": "Use case: precise-object-edit. Image 1 is the exact edit target, a fixed geographic crop from a globe surface texture, NOT a reference for a new composition. This is tile G of a locked 4x4 equirectangular map. Return a single 2304x1280 landscape raster matching the supplied framing exactly. Improve only fine surface detail: photorealistic satellite-scale forest canopy variation, subtle rock and sediment grain, coherent fine drainage within existing land, natural terrain microstructure. Keep every coastline, island outline, land/water boundary, mountain belt, lake, river mouth and all large features at the EXACT SAME PIXEL POSITIONS. No panning, zooming, reframing, stretching, rotating or relocating geography. Preserve the outer 128-pixel context border and the low-frequency color palette. Dark blue and cyan are WATER, not land: keep the ocean smooth, subdued and free of invented rocky relief. This is an unlit base-color/albedo asset: neutral diffuse illumination, no shadows or directional highlights, no clouds, atmospheric haze, vignette, glare, specular reflections or depth-of-field. No new islands, no cities, roads, borders, grid, labels, text, symbols or watermark. Do not draw a whole globe or a world map: enhance ONLY the exact crop supplied. The region is an illustrative warm late-Cretaceous world; do not add polar ice."
+    },
+    {
+      "name": "H",
+      "core": [
+        6144,
+        1024,
+        2048,
+        1024
+      ],
+      "input": "C:\\Users\\ADMIN\\Documents\\code\\asteroid-impact-simulation\\texture_hybrid8k\\inputs\\H.png",
+      "prompt": "Use case: precise-object-edit. Image 1 is the exact edit target, a fixed geographic crop from a globe surface texture, NOT a reference for a new composition. This is tile H of a locked 4x4 equirectangular map. Return a single 2304x1280 landscape raster matching the supplied framing exactly. Improve only fine surface detail: photorealistic satellite-scale forest canopy variation, subtle rock and sediment grain, coherent fine drainage within existing land, natural terrain microstructure. Keep every coastline, island outline, land/water boundary, mountain belt, lake, river mouth and all large features at the EXACT SAME PIXEL POSITIONS. No panning, zooming, reframing, stretching, rotating or relocating geography. Preserve the outer 128-pixel context border and the low-frequency color palette. Dark blue and cyan are WATER, not land: keep the ocean smooth, subdued and free of invented rocky relief. This is an unlit base-color/albedo asset: neutral diffuse illumination, no shadows or directional highlights, no clouds, atmospheric haze, vignette, glare, specular reflections or depth-of-field. No new islands, no cities, roads, borders, grid, labels, text, symbols or watermark. Do not draw a whole globe or a world map: enhance ONLY the exact crop supplied. The region is an illustrative warm late-Cretaceous world; do not add polar ice."
+    },
+    {
+      "name": "I",
+      "core": [
+        0,
+        2048,
+        2048,
+        1024
+      ],
+      "input": "C:\\Users\\ADMIN\\Documents\\code\\asteroid-impact-simulation\\texture_hybrid8k\\inputs\\I.png",
+      "prompt": "Use case: precise-object-edit. Image 1 is the exact edit target, a fixed geographic crop from a globe surface texture, NOT a reference for a new composition. This is tile I of a locked 4x4 equirectangular map. Return a single 2304x1280 landscape raster matching the supplied framing exactly. Improve only fine surface detail: photorealistic satellite-scale forest canopy variation, subtle rock and sediment grain, coherent fine drainage within existing land, natural terrain microstructure. Keep every coastline, island outline, land/water boundary, mountain belt, lake, river mouth and all large features at the EXACT SAME PIXEL POSITIONS. No panning, zooming, reframing, stretching, rotating or relocating geography. Preserve the outer 128-pixel context border and the low-frequency color palette. Dark blue and cyan are WATER, not land: keep the ocean smooth, subdued and free of invented rocky relief. This is an unlit base-color/albedo asset: neutral diffuse illumination, no shadows or directional highlights, no clouds, atmospheric haze, vignette, glare, specular reflections or depth-of-field. No new islands, no cities, roads, borders, grid, labels, text, symbols or watermark. Do not draw a whole globe or a world map: enhance ONLY the exact crop supplied. The region is an illustrative warm late-Cretaceous world; do not add polar ice."
+    },
+    {
+      "name": "J",
+      "core": [
+        2048,
+        2048,
+        2048,
+        1024
+      ],
+      "input": "C:\\Users\\ADMIN\\Documents\\code\\asteroid-impact-simulation\\texture_hybrid8k\\inputs\\J.png",
+      "prompt": "Use case: precise-object-edit. Image 1 is the exact edit target, a fixed geographic crop from a globe surface texture, NOT a reference for a new composition. This is tile J of a locked 4x4 equirectangular map. Return a single 2304x1280 landscape raster matching the supplied framing exactly. Improve only fine surface detail: photorealistic satellite-scale forest canopy variation, subtle rock and sediment grain, coherent fine drainage within existing land, natural terrain microstructure. Keep every coastline, island outline, land/water boundary, mountain belt, lake, river mouth and all large features at the EXACT SAME PIXEL POSITIONS. No panning, zooming, reframing, stretching, rotating or relocating geography. Preserve the outer 128-pixel context border and the low-frequency color palette. Dark blue and cyan are WATER, not land: keep the ocean smooth, subdued and free of invented rocky relief. This is an unlit base-color/albedo asset: neutral diffuse illumination, no shadows or directional highlights, no clouds, atmospheric haze, vignette, glare, specular reflections or depth-of-field. No new islands, no cities, roads, borders, grid, labels, text, symbols or watermark. Do not draw a whole globe or a world map: enhance ONLY the exact crop supplied. The region is an illustrative warm late-Cretaceous world; do not add polar ice."
+    },
+    {
+      "name": "K",
+      "core": [
+        4096,
+        2048,
+        2048,
+        1024
+      ],
+      "input": "C:\\Users\\ADMIN\\Documents\\code\\asteroid-impact-simulation\\texture_hybrid8k\\inputs\\K.png",
+      "prompt": "Use case: precise-object-edit. Image 1 is the exact edit target, a fixed geographic crop from a globe surface texture, NOT a reference for a new composition. This is tile K of a locked 4x4 equirectangular map. Return a single 2304x1280 landscape raster matching the supplied framing exactly. Improve only fine surface detail: photorealistic satellite-scale forest canopy variation, subtle rock and sediment grain, coherent fine drainage within existing land, natural terrain microstructure. Keep every coastline, island outline, land/water boundary, mountain belt, lake, river mouth and all large features at the EXACT SAME PIXEL POSITIONS. No panning, zooming, reframing, stretching, rotating or relocating geography. Preserve the outer 128-pixel context border and the low-frequency color palette. Dark blue and cyan are WATER, not land: keep the ocean smooth, subdued and free of invented rocky relief. This is an unlit base-color/albedo asset: neutral diffuse illumination, no shadows or directional highlights, no clouds, atmospheric haze, vignette, glare, specular reflections or depth-of-field. No new islands, no cities, roads, borders, grid, labels, text, symbols or watermark. Do not draw a whole globe or a world map: enhance ONLY the exact crop supplied. The region is an illustrative warm late-Cretaceous world; do not add polar ice."
+    },
+    {
+      "name": "L",
+      "core": [
+        6144,
+        2048,
+        2048,
+        1024
+      ],
+      "input": "C:\\Users\\ADMIN\\Documents\\code\\asteroid-impact-simulation\\texture_hybrid8k\\inputs\\L.png",
+      "prompt": "Use case: precise-object-edit. Image 1 is the exact edit target, a fixed geographic crop from a globe surface texture, NOT a reference for a new composition. This is tile L of a locked 4x4 equirectangular map. Return a single 2304x1280 landscape raster matching the supplied framing exactly. Improve only fine surface detail: photorealistic satellite-scale forest canopy variation, subtle rock and sediment grain, coherent fine drainage within existing land, natural terrain microstructure. Keep every coastline, island outline, land/water boundary, mountain belt, lake, river mouth and all large features at the EXACT SAME PIXEL POSITIONS. No panning, zooming, reframing, stretching, rotating or relocating geography. Preserve the outer 128-pixel context border and the low-frequency color palette. Dark blue and cyan are WATER, not land: keep the ocean smooth, subdued and free of invented rocky relief. This is an unlit base-color/albedo asset: neutral diffuse illumination, no shadows or directional highlights, no clouds, atmospheric haze, vignette, glare, specular reflections or depth-of-field. No new islands, no cities, roads, borders, grid, labels, text, symbols or watermark. Do not draw a whole globe or a world map: enhance ONLY the exact crop supplied. The region is an illustrative warm late-Cretaceous world; do not add polar ice."
+    },
+    {
+      "name": "M",
+      "core": [
+        0,
+        3072,
+        2048,
+        1024
+      ],
+      "input": "C:\\Users\\ADMIN\\Documents\\code\\asteroid-impact-simulation\\texture_hybrid8k\\inputs\\M.png",
+      "prompt": "Use case: precise-object-edit. Image 1 is the exact edit target, a fixed geographic crop from a globe surface texture, NOT a reference for a new composition. This is tile M of a locked 4x4 equirectangular map. Return a single 2304x1280 landscape raster matching the supplied framing exactly. Improve only fine surface detail: photorealistic satellite-scale forest canopy variation, subtle rock and sediment grain, coherent fine drainage within existing land, natural terrain microstructure. Keep every coastline, island outline, land/water boundary, mountain belt, lake, river mouth and all large features at the EXACT SAME PIXEL POSITIONS. No panning, zooming, reframing, stretching, rotating or relocating geography. Preserve the outer 128-pixel context border and the low-frequency color palette. Dark blue and cyan are WATER, not land: keep the ocean smooth, subdued and free of invented rocky relief. This is an unlit base-color/albedo asset: neutral diffuse illumination, no shadows or directional highlights, no clouds, atmospheric haze, vignette, glare, specular reflections or depth-of-field. No new islands, no cities, roads, borders, grid, labels, text, symbols or watermark. Do not draw a whole globe or a world map: enhance ONLY the exact crop supplied. The region is an illustrative warm late-Cretaceous world; do not add polar ice."
+    },
+    {
+      "name": "N",
+      "core": [
+        2048,
+        3072,
+        2048,
+        1024
+      ],
+      "input": "C:\\Users\\ADMIN\\Documents\\code\\asteroid-impact-simulation\\texture_hybrid8k\\inputs\\N.png",
+      "prompt": "Use case: precise-object-edit. Image 1 is the exact edit target, a fixed geographic crop from a globe surface texture, NOT a reference for a new composition. This is tile N of a locked 4x4 equirectangular map. Return a single 2304x1280 landscape raster matching the supplied framing exactly. Improve only fine surface detail: photorealistic satellite-scale forest canopy variation, subtle rock and sediment grain, coherent fine drainage within existing land, natural terrain microstructure. Keep every coastline, island outline, land/water boundary, mountain belt, lake, river mouth and all large features at the EXACT SAME PIXEL POSITIONS. No panning, zooming, reframing, stretching, rotating or relocating geography. Preserve the outer 128-pixel context border and the low-frequency color palette. Dark blue and cyan are WATER, not land: keep the ocean smooth, subdued and free of invented rocky relief. This is an unlit base-color/albedo asset: neutral diffuse illumination, no shadows or directional highlights, no clouds, atmospheric haze, vignette, glare, specular reflections or depth-of-field. No new islands, no cities, roads, borders, grid, labels, text, symbols or watermark. Do not draw a whole globe or a world map: enhance ONLY the exact crop supplied. The region is an illustrative warm late-Cretaceous world; do not add polar ice."
+    },
+    {
+      "name": "O",
+      "core": [
+        4096,
+        3072,
+        2048,
+        1024
+      ],
+      "input": "C:\\Users\\ADMIN\\Documents\\code\\asteroid-impact-simulation\\texture_hybrid8k\\inputs\\O.png",
+      "prompt": "Use case: precise-object-edit. Image 1 is the exact edit target, a fixed geographic crop from a globe surface texture, NOT a reference for a new composition. This is tile O of a locked 4x4 equirectangular map. Return a single 2304x1280 landscape raster matching the supplied framing exactly. Improve only fine surface detail: photorealistic satellite-scale forest canopy variation, subtle rock and sediment grain, coherent fine drainage within existing land, natural terrain microstructure. Keep every coastline, island outline, land/water boundary, mountain belt, lake, river mouth and all large features at the EXACT SAME PIXEL POSITIONS. No panning, zooming, reframing, stretching, rotating or relocating geography. Preserve the outer 128-pixel context border and the low-frequency color palette. Dark blue and cyan are WATER, not land: keep the ocean smooth, subdued and free of invented rocky relief. This is an unlit base-color/albedo asset: neutral diffuse illumination, no shadows or directional highlights, no clouds, atmospheric haze, vignette, glare, specular reflections or depth-of-field. No new islands, no cities, roads, borders, grid, labels, text, symbols or watermark. Do not draw a whole globe or a world map: enhance ONLY the exact crop supplied. The region is an illustrative warm late-Cretaceous world; do not add polar ice."
+    },
+    {
+      "name": "P",
+      "core": [
+        6144,
+        3072,
+        2048,
+        1024
+      ],
+      "input": "C:\\Users\\ADMIN\\Documents\\code\\asteroid-impact-simulation\\texture_hybrid8k\\inputs\\P.png",
+      "prompt": "Use case: precise-object-edit. Image 1 is the exact edit target, a fixed geographic crop from a globe surface texture, NOT a reference for a new composition. This is tile P of a locked 4x4 equirectangular map. Return a single 2304x1280 landscape raster matching the supplied framing exactly. Improve only fine surface detail: photorealistic satellite-scale forest canopy variation, subtle rock and sediment grain, coherent fine drainage within existing land, natural terrain microstructure. Keep every coastline, island outline, land/water boundary, mountain belt, lake, river mouth and all large features at the EXACT SAME PIXEL POSITIONS. No panning, zooming, reframing, stretching, rotating or relocating geography. Preserve the outer 128-pixel context border and the low-frequency color palette. Dark blue and cyan are WATER, not land: keep the ocean smooth, subdued and free of invented rocky relief. This is an unlit base-color/albedo asset: neutral diffuse illumination, no shadows or directional highlights, no clouds, atmospheric haze, vignette, glare, specular reflections or depth-of-field. No new islands, no cities, roads, borders, grid, labels, text, symbols or watermark. Do not draw a whole globe or a world map: enhance ONLY the exact crop supplied. The region is an illustrative warm late-Cretaceous world; do not add polar ice."
+    }
+  ]
+}

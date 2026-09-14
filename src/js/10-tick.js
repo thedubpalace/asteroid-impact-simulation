@@ -253,6 +253,8 @@
           const slump = ease(clamp01((ft - 0.8) / 2.4));
           const craterScale = 0.34 + dig * 0.72 + slump * 0.30;
           craterGroup.scale.setScalar(craterScale);
+          oceanGlint.material.uniforms.craterMaskRadius.value = CRATER_R * craterScale * 2.15 / EARTH_R;
+          oceanGlint.material.uniforms.craterMaskStrength.value = dig;
           // The floor rebounds as the walls come down, and overshoots into a
           // central uplift that then collapses outward into the peak ring.
           const peakUp = ft < 2.4

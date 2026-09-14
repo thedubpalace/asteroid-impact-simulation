@@ -87,34 +87,30 @@
         const look = camLockEl.checked ? hit.clone().multiplyScalar(0.84) : new THREE.Vector3();
         let pos;
         if (mode === 'close') {
-          // pulled in ~30% now that the crater is 4x smaller, so it still fills
-          // a solid part of the frame at this beat
-          pos = hit.clone().addScaledVector(n, 1.12).addScaledVector(tangent, 0.82).addScaledVector(bitan, 0.4);
+          // View from south of the site: local surface-up projects upward
+          // with OrbitControls' fixed world-Y up, keeping the ground below.
+          pos = hit.clone().addScaledVector(n, 1.12).addScaledVector(tangent, 0.45).addScaledVector(bitan, -0.85);
           look.copy(hit).multiplyScalar(0.97);
         } else if (mode === 'wide') {
-          pos = n.clone().multiplyScalar(9.4).addScaledVector(tangent, 2.5).addScaledVector(bitan, 1.5);
+          pos = n.clone().multiplyScalar(9.4).addScaledVector(tangent, 2.5).addScaledVector(bitan, -2.8);
         } else if (mode === 'cinematic') {
           const u = clamp01(t / 12.4);
-          const far = n.clone().multiplyScalar(10.8).addScaledVector(tangent, 3.6).add(new THREE.Vector3(0, 1.7, 0));
-          // hold a stable near rig through contact so Earth doesn't "jump away";
-          // both near and contact tightened for the smaller crater
-          const near = hit.clone().addScaledVector(n, 1.42).addScaledVector(tangent, 1.08).addScaledVector(bitan, 0.42);
-          // contact swings round to the south side of the site: OrbitControls'
-          // up is world Y (~local north here), so the vertical plume only reads
-          // as *rising* on screen when the camera sits south of it — from the
-          // east it leans sideways and reads as a jet firing along the ground
+          // Keep approach, contact and retreat on the same southern side.
+          // Crossing over the site reversed the apparent ground/plume direction.
+          const far = n.clone().multiplyScalar(10.8).addScaledVector(tangent, 2.2).addScaledVector(bitan, -3.0);
+          const near = hit.clone().addScaledVector(n, 1.42).addScaledVector(tangent, 0.65).addScaledVector(bitan, -0.85);
           const contact = hit.clone().addScaledVector(n, 1.12).addScaledVector(tangent, 0.3).addScaledVector(bitan, -0.92);
-          const pullback = n.clone().multiplyScalar(8.9).addScaledVector(tangent, 2.4).addScaledVector(bitan, 1.4);
+          const pullback = n.clone().multiplyScalar(8.9).addScaledVector(tangent, 2.4).addScaledVector(bitan, -2.4);
           pos = far.clone().lerp(near, ease(Math.min(1, u * 1.05)));
           if (t >= 12.2) {
             const hold = ease(clamp01((t - 12.2) / 1.1));
             pos.lerp(contact, hold * 0.85);
-            look.copy(hit).multiplyScalar(0.96);
+            look.lerp(hit.clone().multiplyScalar(0.96), hold);
           }
           if (t > 15.8) pos.lerp(pullback, ease(clamp01((t - 15.8) / 8)));
           if (t < 12.35) look.lerp(rock, 0.28 * (1 - clamp01((t - 11.0) / 1.35)));
         } else {
-          pos = hit.clone().addScaledVector(n, 1.68).addScaledVector(tangent, 1.5).addScaledVector(bitan, 0.6);
+          pos = hit.clone().addScaledVector(n, 1.68).addScaledVector(tangent, 0.9).addScaledVector(bitan, -0.8);
           look.copy(hit).multiplyScalar(0.9);
         }
         return { pos, look };
@@ -156,11 +152,7 @@
       document.getElementById('cam-reset').addEventListener('click', () => {
         camModeEl.value = 'cinematic';
         camLockEl.checked = true;
-        if (!playing) snapCamera();
-        else {
-          camera.position.set(0.6, 1.8, 8.4);
-          controls.target.set(0, 0, 0);
-        }
+        snapCamera();
       });
       camModeEl.addEventListener('change', snapCamera);
       snapCamera();

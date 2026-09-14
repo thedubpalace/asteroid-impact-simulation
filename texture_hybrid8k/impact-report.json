@@ -1,0 +1,24 @@
+{
+  "native_size": [
+    1254,
+    1254
+  ],
+  "atlas_patch_size": [
+    768,
+    768
+  ],
+  "box": [
+    1675,
+    1177,
+    2443,
+    1945
+  ],
+  "center": [
+    2059,
+    1561
+  ],
+  "land_disagreement_fraction": 0.025134616427951388,
+  "method": "Coordinate-locked high-frequency detail transfer; smooth rectangular feather; unchanged material masks.",
+  "preimpact": true,
+  "new_island_or_crater_painted": false
+}

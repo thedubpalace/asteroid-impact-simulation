@@ -1,0 +1,168 @@
+{
+  "output_size": [
+    8192,
+    4096
+  ],
+  "native_8k": false,
+  "tiles": [
+    {
+      "name": "A",
+      "native_size": [
+        1683,
+        935
+      ],
+      "sha256": "c517b3f4ca12b18f1863b02db7cba1fe6f85ea2280f20aba2fab8bca76429832",
+      "land_disagreement_fraction": 0.018467203776041666
+    },
+    {
+      "name": "B",
+      "native_size": [
+        1683,
+        935
+      ],
+      "sha256": "29fb50c88d52c00c7f1a940aff2395681dcad1c0b310848797166c3acd7158b3",
+      "land_disagreement_fraction": 0.025522867838541668
+    },
+    {
+      "name": "C",
+      "native_size": [
+        1683,
+        935
+      ],
+      "sha256": "a9654515f5033a59da6ac8143fedc6ae565b39fe25a057bac3ad1397d4526392",
+      "land_disagreement_fraction": 0.0422027587890625
+    },
+    {
+      "name": "D",
+      "native_size": [
+        1683,
+        935
+      ],
+      "sha256": "36594ed43c6508dd2b443c3557379e434f34846e2935f264a023a1704e859474",
+      "land_disagreement_fraction": 0.03187289767795139
+    },
+    {
+      "name": "E",
+      "native_size": [
+        1683,
+        935
+      ],
+      "sha256": "af24fea9fbe65513318ae9bb52ca67b0577ed27191208da870e9b30cc8d19789",
+      "land_disagreement_fraction": 0.006523640950520834
+    },
+    {
+      "name": "F",
+      "native_size": [
+        1683,
+        935
+      ],
+      "sha256": "67db9c80cb38e54e56bc48475bc02c60f6580eefc319dc3cc6ba0e365ece5dcb",
+      "land_disagreement_fraction": 0.031159464518229166
+    },
+    {
+      "name": "G",
+      "native_size": [
+        1683,
+        935
+      ],
+      "sha256": "7407bd7c3ae85027777a8b0d7e29de1152de7e49793d734537eca0738556d67a",
+      "land_disagreement_fraction": 0.02384033203125
+    },
+    {
+      "name": "H",
+      "native_size": [
+        1683,
+        935
+      ],
+      "sha256": "8f30b3e5e3dcfa4d7530cddf41a7d8a2ad376e61107f9957f516013775d16979",
+      "land_disagreement_fraction": 0.011176215277777778
+    },
+    {
+      "name": "I",
+      "native_size": [
+        1683,
+        935
+      ],
+      "sha256": "4e31d9111aa7fd8245a39aaa75aff3c6f395bc0d2636bb67963ffdcea9284825",
+      "land_disagreement_fraction": 0.0008660210503472222
+    },
+    {
+      "name": "J",
+      "native_size": [
+        1683,
+        935
+      ],
+      "sha256": "272514c1627f12e05c675882a6e7da2f8d7bb57a4ae9fd1d9311ef0e7db9c3ff",
+      "land_disagreement_fraction": 0.09589606391059027
+    },
+    {
+      "name": "K",
+      "native_size": [
+        1683,
+        935
+      ],
+      "sha256": "1f00d1416a878f497ba3a0c1cd0588e79426c23aeef6c4a19d94407c5b357487",
+      "land_disagreement_fraction": 0.025481838650173613
+    },
+    {
+      "name": "L",
+      "native_size": [
+        1683,
+        935
+      ],
+      "sha256": "6b2cb11be786fcfefa64bbbed735b269c1ee06e6de21314369c96e062c8d75db",
+      "land_disagreement_fraction": 0.02289699978298611
+    },
+    {
+      "name": "M",
+      "native_size": [
+        1683,
+        935
+      ],
+      "sha256": "559e4f248a3c376a46b8cde6e597327edf2bf192710f43ef20c3aebd8c35b0ce",
+      "land_disagreement_fraction": 0.005981106228298611
+    },
+    {
+      "name": "N",
+      "native_size": [
+        1683,
+        935
+      ],
+      "sha256": "f9ef375e02e5cda64bc192c9b2641493e1eda6a738d381b0f4274cec86c90fac",
+      "land_disagreement_fraction": 0.018334282769097224
+    },
+    {
+      "name": "O",
+      "native_size": [
+        1683,
+        935
+      ],
+      "sha256": "5e4eb0ea00366fc495f6c41fb8a687b014df626a6e113c0725bfafe3133cc9d0",
+      "land_disagreement_fraction": 0.04160698784722222
+    },
+    {
+      "name": "P",
+      "native_size": [
+        1683,
+        935
+      ],
+      "sha256": "33a5d42b6957f837be86bca34ee7506ab8bc5dc03f8154ad6d3f23507d41b3be",
+      "land_disagreement_fraction": 0.04519314236111111
+    }
+  ],
+  "method": "Fixed coordinates, feathered inland luminance detail only; master chroma retained.",
+  "limitations": "Illustrative geography; heuristic water mask; synthetic relief, not measured elevation.",
+  "seam_max_channel_error": 0,
+  "ai_ocean_detail_applied": false,
+  "files": {
+    "color-4k.png": 8937685,
+    "color-8k.png": 25566497,
+    "height-8k.png": 13104599,
+    "normal-4k.png": 2152851,
+    "normal-8k.png": 4916666,
+    "roughness-4k.png": 1045453,
+    "roughness-8k.png": 2980049,
+    "water-4k.png": 188855,
+    "water-8k.png": 278383
+  }
+}

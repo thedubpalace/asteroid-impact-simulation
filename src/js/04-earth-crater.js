@@ -7,6 +7,46 @@
       );
       earthGroup.add(earth);
 
+      // Blend on the existing surface, not a second sphere/decal: identical
+      // depth, UVs and lighting at every camera angle and Earth rotation.
+      const impactDetailUniforms = {
+        impactDetailMap: { value: null },
+        impactDetailWater: { value: waterMap },
+        impactDetailCenter: { value: new THREE.Vector2(
+          (IMPACT_LON + Math.PI) / (2 * Math.PI), IMPACT_LAT / Math.PI + 0.5
+        ) },
+        impactDetailExtent: { value: new THREE.Vector2(
+          CRATER_R * 3 / EARTH_R / (2 * Math.PI * Math.cos(IMPACT_LAT)),
+          CRATER_R * 3 / EARTH_R / Math.PI
+        ) }
+      };
+      earth.material.onBeforeCompile = function (shader) {
+        Object.assign(shader.uniforms, impactDetailUniforms);
+        shader.fragmentShader = shader.fragmentShader.replace('#include <common>', `
+          #include <common>
+          uniform sampler2D impactDetailMap;
+          uniform sampler2D impactDetailWater;
+          uniform vec2 impactDetailCenter;
+          uniform vec2 impactDetailExtent;
+        `).replace('#include <map_fragment>', `
+          #include <map_fragment>
+          vec2 siteDelta = vUv - impactDetailCenter;
+          siteDelta.x = mod(siteDelta.x + 0.5, 1.0) - 0.5;
+          vec2 siteLocal = siteDelta / impactDetailExtent;
+          vec2 siteEdge = 1.0 - smoothstep(vec2(0.45), vec2(1.0), abs(siteLocal));
+          float siteWeight = siteEdge.x * siteEdge.y;
+          vec3 siteDetail = texture2D(impactDetailMap, clamp(siteLocal * 0.5 + 0.5, 0.0, 1.0)).rgb - 0.5;
+          float siteLand = 1.0 - smoothstep(0.15, 0.75, texture2D(impactDetailWater, vUv).r);
+          float siteShelf = smoothstep(0.025, 0.16, diffuseColor.g) * (1.0 - siteLand);
+          float siteGrain = siteDetail.r * siteLand * 0.65 + siteDetail.g * siteShelf * 0.22;
+          diffuseColor.rgb *= 1.0 + siteGrain * siteWeight;
+        `).replace('#include <roughnessmap_fragment>', `
+          #include <roughnessmap_fragment>
+          roughnessFactor = clamp(roughnessFactor + siteDetail.b * siteLand * siteWeight * 0.16, 0.04, 1.0);
+        `);
+      };
+      earth.material.customProgramCacheKey = () => 'impact-surface-detail-v1';
+
       // Dynamic Blinn-Phong sun glint on open water, masked by the ocean map —
       // reads as a real specular highlight sliding across the sea rather than a
       // flat tinted sphere. (Ported from the standalone import build.)
@@ -18,16 +58,11 @@
             waterMap: { value: waterMap },
             sunDir: { value: sun.position.clone().normalize() },
             oceanColor: { value: new THREE.Color(0x052840) },
-            // Impact site (crater/ejecta) sits just under this glint sphere but
-            // the water mask has no idea the shallow sea there turned to land —
-            // without masking it out, the specular highlight keeps painting a
-            // bright "reflection" patch straight over the crater/ejecta.
+            // Suppression starts at contact and follows excavation. Before
+            // impact there must be no hole in the ocean's reflection.
             impactDir: { value: impactNormal.clone() },
-            // Must cover the full ejecta apron (ejectaFan radius CRATER_R * 2.15,
-            // craterGroup settles at ~1.36x scale, plus margin), not just the
-            // crater proper — otherwise the sheen still bleeds onto the outer
-            // ejecta ring and reads as an odd "reflection" there.
-            craterMaskCos: { value: Math.cos(Math.asin(Math.min(0.98, (CRATER_R * 2.15 * 1.36 * 1.15) / EARTH_R))) }
+            craterMaskRadius: { value: 0 },
+            craterMaskStrength: { value: 0 }
           },
           vertexShader: [
             'varying vec3 vWNormal; varying vec3 vWPos; varying vec2 vUv; varying vec3 vLocalN;',
@@ -42,13 +77,16 @@
           ].join('\n'),
           fragmentShader: [
             'uniform sampler2D waterMap; uniform vec3 sunDir; uniform vec3 oceanColor;',
-            'uniform vec3 impactDir; uniform float craterMaskCos;',
+            'uniform vec3 impactDir; uniform float craterMaskRadius; uniform float craterMaskStrength;',
             'varying vec3 vWNormal; varying vec3 vWPos; varying vec2 vUv; varying vec3 vLocalN;',
             'void main(){',
-            // impactDir/impactNormal are local-space (relative to earthGroup);
-            // must compare against the local-space normal, not the world-space
-            // one, or the mask hole drifts off the crater as Earth rotates.
-            '  if (dot(vLocalN, impactDir) > craterMaskCos) discard;',
+            // Earth-local coordinates keep the deposit fixed as Earth rotates.
+            // A broad feather with spatial variation avoids a circular cutout.
+            '  vec3 localN = normalize(vLocalN);',
+            '  float angle = acos(clamp(dot(localN, impactDir), -1.0, 1.0));',
+            '  float edge = 1.0 + 0.13*sin(localN.x*63.0+localN.y*41.0)*sin(localN.z*57.0-localN.y*29.0);',
+            '  float radius = max(0.0001, craterMaskRadius*edge);',
+            '  float deposit = (1.0-smoothstep(radius*0.4, radius, angle))*craterMaskStrength;',
             '  float mask = texture2D(waterMap, vUv).r;',
             '  if (mask < 0.02) discard;',
             '  vec3 n = normalize(vWNormal);',
@@ -60,13 +98,18 @@
             '  float fres = pow(1.0 - max(dot(n, v), 0.0), 3.0);',
             '  float glint = spec + broad;',
             '  vec3 col = oceanColor + vec3(1.0, 0.97, 0.87) * glint + vec3(0.3, 0.5, 0.7) * fres * 0.3;',
-            '  float alpha = mask * clamp(0.16 + glint * 0.85 + fres * 0.12, 0.0, 1.0);',
+            // Reflect light only. An always-on ocean-colour wash obscured the
+            // shallow shelves already painted into the source albedo.
+            '  float alpha = mask * (1.0-deposit) * clamp(glint * 0.85 + fres * 0.12, 0.0, 1.0);',
             '  gl_FragColor = vec4(col, alpha);',
             '}'
           ].join('\n')
         })
       );
       earthGroup.add(oceanGlint);
+
+      // The albedo supplies the shallow shelf's coastline and sediment colour.
+      // Keep it on the lit Earth material rather than an unlit radial overlay.
 
       const nights = new THREE.Mesh(
         new THREE.SphereGeometry(EARTH_R + 0.004, 112, 112),

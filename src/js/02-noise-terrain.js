@@ -21,7 +21,8 @@
 
       function latLonToVec(lat, lon, r) {
         const cl = Math.cos(lat);
-        return new THREE.Vector3(r * cl * Math.cos(lon), r * Math.sin(lat), r * cl * Math.sin(lon));
+        // Match SphereGeometry UVs: u=(longitude+PI)/(2*PI), v=latitude/PI+0.5.
+        return new THREE.Vector3(r * cl * Math.cos(lon), r * Math.sin(lat), -r * cl * Math.sin(lon));
       }
       const impactPoint = latLonToVec(IMPACT_LAT, IMPACT_LON, EARTH_R);
       const impactNormal = impactPoint.clone().normalize();
@@ -159,4 +160,3 @@
           + (noise2(nx * 150, ny * 260) - 0.5) * 0.038
           + (noise2(nx * 340 + 5.1, ny * 560 + 2.4) - 0.5) * 0.016;
       }
-

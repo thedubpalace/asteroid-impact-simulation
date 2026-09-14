@@ -53,6 +53,8 @@
         impactBloom.material.uniforms.bloomR.value = 0;
         impactBloom.material.uniforms.bloomA.value = 0;
         craterGroup.visible = false;
+        oceanGlint.material.uniforms.craterMaskRadius.value = 0;
+        oceanGlint.material.uniforms.craterMaskStrength.value = 0;
         craterGroup.scale.setScalar(0.001);
         buildCrater(0, 0);
         boulderGroup.scale.setScalar(1);
@@ -136,6 +138,7 @@
         oceanGlint.material.uniforms.waterMap.value = tex;
         scorch.material.uniforms.waterMap.value = tex;
         tsunami.material.uniforms.waterMap.value = tex;
+        impactDetailUniforms.impactDetailWater.value = tex;
         if (prev && prev !== tex && prev.dispose) prev.dispose();
         waterMap = tex;
       }
@@ -144,25 +147,36 @@
         setLoad(5, 'Opening the frame');
         await yieldFrame();
 
-        // Primary path: a real palaeo-map of the Late Cretaceous (~66 Ma) — a
-        // photographic colour map plus a grayscale relief map, both cropped of
-        // their pole bands. The relief image is a *hillshaded* render, not a
-        // height field, so it can't drive a bumpMap (that produces moire) — it
-        // is only used as the roughness map (bright land = rough, dark sea =
-        // smooth); the colour photo already carries its own relief shading.
-        // If any of the three image files fail to load, fall back to procedural.
+        // Hybrid illustrative albedo: fixed master geography plus AI detail.
+        // Use 4K auxiliary maps to limit GPU memory. Relief is synthetic, not a DEM.
+        // Retain the original assets and procedural terrain as fallback paths.
         setLoad(12, 'Loading the Cretaceous map');
         await yieldFrame();
         try {
-          const [colorImg, reliefImg, waterImg] = await Promise.all([
-            loadImage('textures/earth_cretaceous_color.jpg'),
-            loadImage('textures/earth_cretaceous_bump.jpg'),
-            loadImage('textures/earth_cretaceous_water.png')
-          ]);
+          const colorSize = renderer.capabilities.maxTextureSize >= 8192 ? '8k' : '4k';
+          let images;
+          try {
+            images = await Promise.all([
+              loadImage('textures/hybrid8k/color-' + colorSize + '.png'),
+              loadImage('textures/hybrid8k/roughness-4k.png'),
+              loadImage('textures/hybrid8k/water-4k.png'),
+              loadImage('textures/hybrid8k/normal-4k.png')
+            ]);
+          } catch (textureError) {
+            console.warn('Hybrid texture unavailable; loading original assets', textureError);
+            images = await Promise.all([
+              loadImage('textures/earth_cretaceous_color.jpg'),
+              loadImage('textures/earth_cretaceous_bump.jpg'),
+              loadImage('textures/earth_cretaceous_water.png')
+            ]);
+          }
+          const [colorImg, reliefImg, waterImg, normalImg] = images;
           setLoad(48, 'Wrapping the globe');
           await yieldFrame();
           earthMap = swapMap(earth, 'map', imgTex(colorImg, false));
           bumpMap = swapMap(earth, 'bumpMap', null);
+          swapMap(earth, 'normalMap', normalImg ? imgTex(normalImg, true) : null);
+          earth.material.normalScale.set(0.35, 0.35);
           specMap = swapMap(earth, 'roughnessMap', imgTex(reliefImg, true));
           setLoad(66, 'Polishing seas');
           await yieldFrame();
@@ -181,6 +195,13 @@
           specMap = swapMap(earth, 'roughnessMap', canvasTex(paintSpec, 1536, 768));
           setWaterMask(canvasTex(paintWater, 1536, 768));
         }
+
+        setLoad(70, 'Detailing the impact site');
+        await yieldFrame();
+        const siteDetail = canvasTex(paintImpactDetail, 1024, 1024);
+        siteDetail.encoding = THREE.LinearEncoding;
+        siteDetail.anisotropy = Math.min(8, renderer.capabilities.getMaxAnisotropy());
+        impactDetailUniforms.impactDetailMap.value = siteDetail;
 
         setLoad(74, 'Lighting the night side');
         await yieldFrame();
@@ -225,4 +246,3 @@
         document.body.classList.add('is-playing');
         window.setTimeout(function () { document.body.classList.add('is-open'); }, 280);
       });
-

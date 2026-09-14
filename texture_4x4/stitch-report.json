@@ -1,0 +1,105 @@
+{
+  "output_size": [
+    4096,
+    2048
+  ],
+  "tiles": [
+    {
+      "tile": "A",
+      "used": true,
+      "inliers": 25,
+      "globe_fraction_confident": 0.045183529091766456
+    },
+    {
+      "tile": "B",
+      "used": true,
+      "inliers": 117,
+      "globe_fraction_confident": 0.02902567335520337
+    },
+    {
+      "tile": "C",
+      "used": true,
+      "inliers": 213,
+      "globe_fraction_confident": 0.09266252229053254
+    },
+    {
+      "tile": "D",
+      "used": true,
+      "inliers": 43,
+      "globe_fraction_confident": 0.05626238451184528
+    },
+    {
+      "tile": "E",
+      "used": false,
+      "reason": "Insufficient spatially distributed matches"
+    },
+    {
+      "tile": "F",
+      "used": true,
+      "inliers": 70,
+      "globe_fraction_confident": 0.029769856209382932
+    },
+    {
+      "tile": "G",
+      "used": true,
+      "inliers": 56,
+      "globe_fraction_confident": 0.05437936675186745
+    },
+    {
+      "tile": "H",
+      "used": true,
+      "inliers": 48,
+      "globe_fraction_confident": 0.038124277901137434
+    },
+    {
+      "tile": "I",
+      "used": true,
+      "inliers": 65,
+      "globe_fraction_confident": 0.0552423900789177
+    },
+    {
+      "tile": "J",
+      "used": true,
+      "inliers": 37,
+      "globe_fraction_confident": 0.06531968087202215
+    },
+    {
+      "tile": "K",
+      "used": true,
+      "inliers": 63,
+      "globe_fraction_confident": 0.0868850958794767
+    },
+    {
+      "tile": "L",
+      "used": false,
+      "reason": "Insufficient spatially distributed matches"
+    },
+    {
+      "tile": "M",
+      "used": false,
+      "reason": "Insufficient spatially distributed matches"
+    },
+    {
+      "tile": "N",
+      "used": false,
+      "reason": "Insufficient spatially distributed matches"
+    },
+    {
+      "tile": "O",
+      "used": false,
+      "reason": "Insufficient spatially distributed matches"
+    },
+    {
+      "tile": "P",
+      "used": false,
+      "reason": "Insufficient spatially distributed matches"
+    }
+  ],
+  "globe_fraction_confident": 0.3896334248044852,
+  "limitations": [
+    "4096x2048 canvas is not uniform native 4K detail.",
+    "Unsupported regions retain interpolated master pixels.",
+    "Master longitude seam and polar artifacts are preserved, not reconstructed.",
+    "Color-derived material masks remain approximate; no height map is inferred."
+  ]
+}

@@ -526,7 +526,8 @@
 
       function latLonToVec(lat, lon, r) {
         const cl = Math.cos(lat);
-        return new THREE.Vector3(r * cl * Math.cos(lon), r * Math.sin(lat), r * cl * Math.sin(lon));
+        // Match SphereGeometry UVs: u=(longitude+PI)/(2*PI), v=latitude/PI+0.5.
+        return new THREE.Vector3(r * cl * Math.cos(lon), r * Math.sin(lat), -r * cl * Math.sin(lon));
       }
       const impactPoint = latLonToVec(IMPACT_LAT, IMPACT_LON, EARTH_R);
       const impactNormal = impactPoint.clone().normalize();
@@ -664,7 +665,6 @@
           + (noise2(nx * 150, ny * 260) - 0.5) * 0.038
           + (noise2(nx * 340 + 5.1, ny * 560 + 2.4) - 0.5) * 0.016;
       }
-
       function paintCretaceous(ctx, w, h) {
         const img = ctx.createImageData(w, h);
         const d = img.data;
@@ -960,6 +960,27 @@
         ctx.putImageData(img, 0, 0);
       }
 
+      // A dedicated local texture keeps sub-texel terrain detail out of the
+      // global atlas. Channels hold canopy/rock grain and submerged sediment.
+      function paintImpactDetail(ctx, w, h) {
+        const img = ctx.createImageData(w, h);
+        for (let y = 0; y < h; y++) {
+          for (let x = 0; x < w; x++) {
+            const u = x / w, v = y / h;
+            const warp = noise2(u * 18 + 4.1, v * 18 + 7.3);
+            const grain = noise2(u * 280 + warp * 3, v * 280 - warp * 3);
+            const clumps = noise2(u * 95 + warp * 5, v * 95 + warp * 4);
+            const sediment = noise2(u * 135 + warp * 8, v * 48 + warp * 5);
+            const i = (y * w + x) * 4;
+            img.data[i] = 128 + (grain - 0.5) * 155 + (clumps - 0.5) * 100;
+            img.data[i + 1] = 128 + (sediment - 0.5) * 190;
+            img.data[i + 2] = 128 + (grain - 0.5) * 180;
+            img.data[i + 3] = 255;
+          }
+        }
+        ctx.putImageData(img, 0, 0);
+      }
+
       let earthMap = placeholderTex('#16324a');
       let bumpMap = placeholderTex('#404040');
       let specMap = placeholderTex('#202020');
@@ -967,7 +988,6 @@
       let nightMap = placeholderTex('#000000');
       const earthGroup = new THREE.Group();
       scene.add(earthGroup);
-
       const earth = new THREE.Mesh(
         new THREE.SphereGeometry(EARTH_R, 160, 160),
         new THREE.MeshStandardMaterial({
@@ -976,6 +996,46 @@
         })
       );
       earthGroup.add(earth);
+
+      // Blend on the existing surface, not a second sphere/decal: identical
+      // depth, UVs and lighting at every camera angle and Earth rotation.
+      const impactDetailUniforms = {
+        impactDetailMap: { value: null },
+        impactDetailWater: { value: waterMap },
+        impactDetailCenter: { value: new THREE.Vector2(
+          (IMPACT_LON + Math.PI) / (2 * Math.PI), IMPACT_LAT / Math.PI + 0.5
+        ) },
+        impactDetailExtent: { value: new THREE.Vector2(
+          CRATER_R * 3 / EARTH_R / (2 * Math.PI * Math.cos(IMPACT_LAT)),
+          CRATER_R * 3 / EARTH_R / Math.PI
+        ) }
+      };
+      earth.material.onBeforeCompile = function (shader) {
+        Object.assign(shader.uniforms, impactDetailUniforms);
+        shader.fragmentShader = shader.fragmentShader.replace('#include <common>', `
+          #include <common>
+          uniform sampler2D impactDetailMap;
+          uniform sampler2D impactDetailWater;
+          uniform vec2 impactDetailCenter;
+          uniform vec2 impactDetailExtent;
+        `).replace('#include <map_fragment>', `
+          #include <map_fragment>
+          vec2 siteDelta = vUv - impactDetailCenter;
+          siteDelta.x = mod(siteDelta.x + 0.5, 1.0) - 0.5;
+          vec2 siteLocal = siteDelta / impactDetailExtent;
+          vec2 siteEdge = 1.0 - smoothstep(vec2(0.45), vec2(1.0), abs(siteLocal));
+          float siteWeight = siteEdge.x * siteEdge.y;
+          vec3 siteDetail = texture2D(impactDetailMap, clamp(siteLocal * 0.5 + 0.5, 0.0, 1.0)).rgb - 0.5;
+          float siteLand = 1.0 - smoothstep(0.15, 0.75, texture2D(impactDetailWater, vUv).r);
+          float siteShelf = smoothstep(0.025, 0.16, diffuseColor.g) * (1.0 - siteLand);
+          float siteGrain = siteDetail.r * siteLand * 0.65 + siteDetail.g * siteShelf * 0.22;
+          diffuseColor.rgb *= 1.0 + siteGrain * siteWeight;
+        `).replace('#include <roughnessmap_fragment>', `
+          #include <roughnessmap_fragment>
+          roughnessFactor = clamp(roughnessFactor + siteDetail.b * siteLand * siteWeight * 0.16, 0.04, 1.0);
+        `);
+      };
+      earth.material.customProgramCacheKey = () => 'impact-surface-detail-v1';
 
       // Dynamic Blinn-Phong sun glint on open water, masked by the ocean map —
       // reads as a real specular highlight sliding across the sea rather than a
@@ -988,16 +1048,11 @@
             waterMap: { value: waterMap },
             sunDir: { value: sun.position.clone().normalize() },
             oceanColor: { value: new THREE.Color(0x052840) },
-            // Impact site (crater/ejecta) sits just under this glint sphere but
-            // the water mask has no idea the shallow sea there turned to land —
-            // without masking it out, the specular highlight keeps painting a
-            // bright "reflection" patch straight over the crater/ejecta.
+            // Suppression starts at contact and follows excavation. Before
+            // impact there must be no hole in the ocean's reflection.
             impactDir: { value: impactNormal.clone() },
-            // Must cover the full ejecta apron (ejectaFan radius CRATER_R * 2.15,
-            // craterGroup settles at ~1.36x scale, plus margin), not just the
-            // crater proper — otherwise the sheen still bleeds onto the outer
-            // ejecta ring and reads as an odd "reflection" there.
-            craterMaskCos: { value: Math.cos(Math.asin(Math.min(0.98, (CRATER_R * 2.15 * 1.36 * 1.15) / EARTH_R))) }
+            craterMaskRadius: { value: 0 },
+            craterMaskStrength: { value: 0 }
           },
           vertexShader: [
             'varying vec3 vWNormal; varying vec3 vWPos; varying vec2 vUv; varying vec3 vLocalN;',
@@ -1012,13 +1067,16 @@
           ].join('\n'),
           fragmentShader: [
             'uniform sampler2D waterMap; uniform vec3 sunDir; uniform vec3 oceanColor;',
-            'uniform vec3 impactDir; uniform float craterMaskCos;',
+            'uniform vec3 impactDir; uniform float craterMaskRadius; uniform float craterMaskStrength;',
             'varying vec3 vWNormal; varying vec3 vWPos; varying vec2 vUv; varying vec3 vLocalN;',
             'void main(){',
-            // impactDir/impactNormal are local-space (relative to earthGroup);
-            // must compare against the local-space normal, not the world-space
-            // one, or the mask hole drifts off the crater as Earth rotates.
-            '  if (dot(vLocalN, impactDir) > craterMaskCos) discard;',
+            // Earth-local coordinates keep the deposit fixed as Earth rotates.
+            // A broad feather with spatial variation avoids a circular cutout.
+            '  vec3 localN = normalize(vLocalN);',
+            '  float angle = acos(clamp(dot(localN, impactDir), -1.0, 1.0));',
+            '  float edge = 1.0 + 0.13*sin(localN.x*63.0+localN.y*41.0)*sin(localN.z*57.0-localN.y*29.0);',
+            '  float radius = max(0.0001, craterMaskRadius*edge);',
+            '  float deposit = (1.0-smoothstep(radius*0.4, radius, angle))*craterMaskStrength;',
             '  float mask = texture2D(waterMap, vUv).r;',
             '  if (mask < 0.02) discard;',
             '  vec3 n = normalize(vWNormal);',
@@ -1030,13 +1088,18 @@
             '  float fres = pow(1.0 - max(dot(n, v), 0.0), 3.0);',
             '  float glint = spec + broad;',
             '  vec3 col = oceanColor + vec3(1.0, 0.97, 0.87) * glint + vec3(0.3, 0.5, 0.7) * fres * 0.3;',
-            '  float alpha = mask * clamp(0.16 + glint * 0.85 + fres * 0.12, 0.0, 1.0);',
+            // Reflect light only. An always-on ocean-colour wash obscured the
+            // shallow shelves already painted into the source albedo.
+            '  float alpha = mask * (1.0-deposit) * clamp(glint * 0.85 + fres * 0.12, 0.0, 1.0);',
             '  gl_FragColor = vec4(col, alpha);',
             '}'
           ].join('\n')
         })
       );
       earthGroup.add(oceanGlint);
+
+      // The albedo supplies the shallow shelf's coastline and sediment colour.
+      // Keep it on the lit Earth material rather than an unlit radial overlay.
 
       const nights = new THREE.Mesh(
         new THREE.SphereGeometry(EARTH_R + 0.004, 112, 112),
@@ -2697,6 +2760,8 @@
         impactBloom.material.uniforms.bloomR.value = 0;
         impactBloom.material.uniforms.bloomA.value = 0;
         craterGroup.visible = false;
+        oceanGlint.material.uniforms.craterMaskRadius.value = 0;
+        oceanGlint.material.uniforms.craterMaskStrength.value = 0;
         craterGroup.scale.setScalar(0.001);
         buildCrater(0, 0);
         boulderGroup.scale.setScalar(1);
@@ -2780,6 +2845,7 @@
         oceanGlint.material.uniforms.waterMap.value = tex;
         scorch.material.uniforms.waterMap.value = tex;
         tsunami.material.uniforms.waterMap.value = tex;
+        impactDetailUniforms.impactDetailWater.value = tex;
         if (prev && prev !== tex && prev.dispose) prev.dispose();
         waterMap = tex;
       }
@@ -2788,25 +2854,36 @@
         setLoad(5, 'Opening the frame');
         await yieldFrame();
 
-        // Primary path: a real palaeo-map of the Late Cretaceous (~66 Ma) — a
-        // photographic colour map plus a grayscale relief map, both cropped of
-        // their pole bands. The relief image is a *hillshaded* render, not a
-        // height field, so it can't drive a bumpMap (that produces moire) — it
-        // is only used as the roughness map (bright land = rough, dark sea =
-        // smooth); the colour photo already carries its own relief shading.
-        // If any of the three image files fail to load, fall back to procedural.
+        // Hybrid illustrative albedo: fixed master geography plus AI detail.
+        // Use 4K auxiliary maps to limit GPU memory. Relief is synthetic, not a DEM.
+        // Retain the original assets and procedural terrain as fallback paths.
         setLoad(12, 'Loading the Cretaceous map');
         await yieldFrame();
         try {
-          const [colorImg, reliefImg, waterImg] = await Promise.all([
-            loadImage('textures/earth_cretaceous_color.jpg'),
-            loadImage('textures/earth_cretaceous_bump.jpg'),
-            loadImage('textures/earth_cretaceous_water.png')
-          ]);
+          const colorSize = renderer.capabilities.maxTextureSize >= 8192 ? '8k' : '4k';
+          let images;
+          try {
+            images = await Promise.all([
+              loadImage('textures/hybrid8k/color-' + colorSize + '.png'),
+              loadImage('textures/hybrid8k/roughness-4k.png'),
+              loadImage('textures/hybrid8k/water-4k.png'),
+              loadImage('textures/hybrid8k/normal-4k.png')
+            ]);
+          } catch (textureError) {
+            console.warn('Hybrid texture unavailable; loading original assets', textureError);
+            images = await Promise.all([
+              loadImage('textures/earth_cretaceous_color.jpg'),
+              loadImage('textures/earth_cretaceous_bump.jpg'),
+              loadImage('textures/earth_cretaceous_water.png')
+            ]);
+          }
+          const [colorImg, reliefImg, waterImg, normalImg] = images;
           setLoad(48, 'Wrapping the globe');
           await yieldFrame();
           earthMap = swapMap(earth, 'map', imgTex(colorImg, false));
           bumpMap = swapMap(earth, 'bumpMap', null);
+          swapMap(earth, 'normalMap', normalImg ? imgTex(normalImg, true) : null);
+          earth.material.normalScale.set(0.35, 0.35);
           specMap = swapMap(earth, 'roughnessMap', imgTex(reliefImg, true));
           setLoad(66, 'Polishing seas');
           await yieldFrame();
@@ -2825,6 +2902,13 @@
           specMap = swapMap(earth, 'roughnessMap', canvasTex(paintSpec, 1536, 768));
           setWaterMask(canvasTex(paintWater, 1536, 768));
         }
+
+        setLoad(70, 'Detailing the impact site');
+        await yieldFrame();
+        const siteDetail = canvasTex(paintImpactDetail, 1024, 1024);
+        siteDetail.encoding = THREE.LinearEncoding;
+        siteDetail.anisotropy = Math.min(8, renderer.capabilities.getMaxAnisotropy());
+        impactDetailUniforms.impactDetailMap.value = siteDetail;
 
         setLoad(74, 'Lighting the night side');
         await yieldFrame();
@@ -2869,7 +2953,6 @@
         document.body.classList.add('is-playing');
         window.setTimeout(function () { document.body.classList.add('is-open'); }, 280);
       });
-
       function ease(t) { return t * t * (3 - 2 * t); }
       function clamp01(v) { return Math.max(0, Math.min(1, v)); }
 
@@ -2959,34 +3042,30 @@
         const look = camLockEl.checked ? hit.clone().multiplyScalar(0.84) : new THREE.Vector3();
         let pos;
         if (mode === 'close') {
-          // pulled in ~30% now that the crater is 4x smaller, so it still fills
-          // a solid part of the frame at this beat
-          pos = hit.clone().addScaledVector(n, 1.12).addScaledVector(tangent, 0.82).addScaledVector(bitan, 0.4);
+          // View from south of the site: local surface-up projects upward
+          // with OrbitControls' fixed world-Y up, keeping the ground below.
+          pos = hit.clone().addScaledVector(n, 1.12).addScaledVector(tangent, 0.45).addScaledVector(bitan, -0.85);
           look.copy(hit).multiplyScalar(0.97);
         } else if (mode === 'wide') {
-          pos = n.clone().multiplyScalar(9.4).addScaledVector(tangent, 2.5).addScaledVector(bitan, 1.5);
+          pos = n.clone().multiplyScalar(9.4).addScaledVector(tangent, 2.5).addScaledVector(bitan, -2.8);
         } else if (mode === 'cinematic') {
           const u = clamp01(t / 12.4);
-          const far = n.clone().multiplyScalar(10.8).addScaledVector(tangent, 3.6).add(new THREE.Vector3(0, 1.7, 0));
-          // hold a stable near rig through contact so Earth doesn't "jump away";
-          // both near and contact tightened for the smaller crater
-          const near = hit.clone().addScaledVector(n, 1.42).addScaledVector(tangent, 1.08).addScaledVector(bitan, 0.42);
-          // contact swings round to the south side of the site: OrbitControls'
-          // up is world Y (~local north here), so the vertical plume only reads
-          // as *rising* on screen when the camera sits south of it — from the
-          // east it leans sideways and reads as a jet firing along the ground
+          // Keep approach, contact and retreat on the same southern side.
+          // Crossing over the site reversed the apparent ground/plume direction.
+          const far = n.clone().multiplyScalar(10.8).addScaledVector(tangent, 2.2).addScaledVector(bitan, -3.0);
+          const near = hit.clone().addScaledVector(n, 1.42).addScaledVector(tangent, 0.65).addScaledVector(bitan, -0.85);
           const contact = hit.clone().addScaledVector(n, 1.12).addScaledVector(tangent, 0.3).addScaledVector(bitan, -0.92);
-          const pullback = n.clone().multiplyScalar(8.9).addScaledVector(tangent, 2.4).addScaledVector(bitan, 1.4);
+          const pullback = n.clone().multiplyScalar(8.9).addScaledVector(tangent, 2.4).addScaledVector(bitan, -2.4);
           pos = far.clone().lerp(near, ease(Math.min(1, u * 1.05)));
           if (t >= 12.2) {
             const hold = ease(clamp01((t - 12.2) / 1.1));
             pos.lerp(contact, hold * 0.85);
-            look.copy(hit).multiplyScalar(0.96);
+            look.lerp(hit.clone().multiplyScalar(0.96), hold);
           }
           if (t > 15.8) pos.lerp(pullback, ease(clamp01((t - 15.8) / 8)));
           if (t < 12.35) look.lerp(rock, 0.28 * (1 - clamp01((t - 11.0) / 1.35)));
         } else {
-          pos = hit.clone().addScaledVector(n, 1.68).addScaledVector(tangent, 1.5).addScaledVector(bitan, 0.6);
+          pos = hit.clone().addScaledVector(n, 1.68).addScaledVector(tangent, 0.9).addScaledVector(bitan, -0.8);
           look.copy(hit).multiplyScalar(0.9);
         }
         return { pos, look };
@@ -3028,11 +3107,7 @@
       document.getElementById('cam-reset').addEventListener('click', () => {
         camModeEl.value = 'cinematic';
         camLockEl.checked = true;
-        if (!playing) snapCamera();
-        else {
-          camera.position.set(0.6, 1.8, 8.4);
-          controls.target.set(0, 0, 0);
-        }
+        snapCamera();
       });
       camModeEl.addEventListener('change', snapCamera);
       snapCamera();
@@ -4857,6 +4932,8 @@
           const slump = ease(clamp01((ft - 0.8) / 2.4));
           const craterScale = 0.34 + dig * 0.72 + slump * 0.30;
           craterGroup.scale.setScalar(craterScale);
+          oceanGlint.material.uniforms.craterMaskRadius.value = CRATER_R * craterScale * 2.15 / EARTH_R;
+          oceanGlint.material.uniforms.craterMaskStrength.value = dig;
           // The floor rebounds as the walls come down, and overshoots into a
           // central uplift that then collapses outward into the peak ring.
           const peakUp = ft < 2.4

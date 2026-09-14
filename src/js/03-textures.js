@@ -293,6 +293,27 @@
         ctx.putImageData(img, 0, 0);
       }
 
+      // A dedicated local texture keeps sub-texel terrain detail out of the
+      // global atlas. Channels hold canopy/rock grain and submerged sediment.
+      function paintImpactDetail(ctx, w, h) {
+        const img = ctx.createImageData(w, h);
+        for (let y = 0; y < h; y++) {
+          for (let x = 0; x < w; x++) {
+            const u = x / w, v = y / h;
+            const warp = noise2(u * 18 + 4.1, v * 18 + 7.3);
+            const grain = noise2(u * 280 + warp * 3, v * 280 - warp * 3);
+            const clumps = noise2(u * 95 + warp * 5, v * 95 + warp * 4);
+            const sediment = noise2(u * 135 + warp * 8, v * 48 + warp * 5);
+            const i = (y * w + x) * 4;
+            img.data[i] = 128 + (grain - 0.5) * 155 + (clumps - 0.5) * 100;
+            img.data[i + 1] = 128 + (sediment - 0.5) * 190;
+            img.data[i + 2] = 128 + (grain - 0.5) * 180;
+            img.data[i + 3] = 255;
+          }
+        }
+        ctx.putImageData(img, 0, 0);
+      }
+
       let earthMap = placeholderTex('#16324a');
       let bumpMap = placeholderTex('#404040');
       let specMap = placeholderTex('#202020');
@@ -300,4 +321,3 @@
       let nightMap = placeholderTex('#000000');
       const earthGroup = new THREE.Group();
       scene.add(earthGroup);
-
