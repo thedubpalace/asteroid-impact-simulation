@@ -34,8 +34,11 @@
 
         const lookAhead = simTime;
         let timeScale = introT < 1.8 ? THREE.MathUtils.lerp(0.35, 1, ease(clamp01(introT / 1.8))) : 1;
-        if (lookAhead > 12.15 && lookAhead < 13.55) timeScale = THREE.MathUtils.lerp(1, 0.22, ease(clamp01((lookAhead - 12.15) / 0.28)));
-        if (lookAhead >= 13.55 && lookAhead < 15.2) timeScale = THREE.MathUtils.lerp(0.22, 1, ease(clamp01((lookAhead - 13.55) / 1.6)));
+        // Keep the contact beat readable without making the timeline appear
+        // frozen on Impact flash. A 0.22x floor was too close to a pause once
+        // the crater and particle systems became visible together.
+        if (lookAhead > 12.15 && lookAhead < 13.55) timeScale = THREE.MathUtils.lerp(1, 0.5, ease(clamp01((lookAhead - 12.15) / 0.28)));
+        if (lookAhead >= 13.55 && lookAhead < 15.2) timeScale = THREE.MathUtils.lerp(0.5, 1, ease(clamp01((lookAhead - 13.55) / 1.6)));
         simTime += realDt * timeScale;
         const t = simTime;
         const dt = realDt * timeScale;
@@ -61,7 +64,7 @@
 
         // rotate Earth first, then derive a single shared impact site for camera/rock/fx
         // Scaled by the sim's own dt, so the planet, its cloud decks and the
-        // tumbling bolide all slow down with everything else through the 0.22x
+        // tumbling bolide all slow down with everything else through the 0.5x
         // window around contact. As per-frame increments they kept turning at
         // full rate while the impact itself crawled — and the whole spin was
         // frame-rate dependent on top of that. Same defect the particle
