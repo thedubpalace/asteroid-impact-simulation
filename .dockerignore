@@ -1,0 +1,12 @@
+.git
+.cache
+.claude
+.openai
+src
+tests
+build.mjs
+PRODUCT.md
+texture_4x4
+texture_hybrid8k
+textures/impact-first-v1/*.py
+textures/impact-first-v1/*.md
